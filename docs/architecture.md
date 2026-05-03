@@ -8,7 +8,7 @@
 
 ---
 
-This is an explainer for someone who has never built a web app before. We'll start with what the user sees, then peel back each layer until we hit the AI part — the most interesting bit. By the end you'll understand how a single sentence typed into chat ("make it feel like a quiet bookshop") becomes a fully restyled page.
+This is an explainer tailored for those who are unfamiliar with building web applications. We'll start with what the user sees, then peel back each layer until we hit the AI part — the most interesting bit. By the end you'll understand how a single sentence typed into chat ("make it feel like a quiet bookshop") becomes a fully restyled page.
 
 If you want to read the code instead, the file paths in `[brackets]` point you to the right place.
 
