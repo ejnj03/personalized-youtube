@@ -132,7 +132,7 @@ You don't have to understand them deeply yet — just know they exist and where 
 **The whole product loop in one sentence:**
 visitor talks → Claude emits patches → store applies them → page re-renders → patches saved → reload replays them.
 
-If you want to go deeper on any one of these, read [ARCHITECTURE.md](./ARCHITECTURE.md). It walks the same loop in much more detail.
+If you want to go deeper on any one of these, read [architecture.md](./architecture.md). It walks the same loop in much more detail.
 
 ---
 
