@@ -125,11 +125,9 @@ showcase/
 
 ## Onboarding new contributors
 
-If you're handing this codebase to someone unfamiliar with production web apps:
-
-1. Have them read [`docs/ONBOARDING.md`](docs/ONBOARDING.md) **first** — it's a 30-minute walk-through that gets the app running, makes one tiny visible change, and leaves them with a working mental model. Designed for people who don't know terms like "Server Component" yet.
-2. Once they're past that, [`docs/architecture.md`](docs/architecture.md) is the deep dive on how the personalization actually works — how a chat message becomes a visible page change.
-3. [`docs/GLOSSARY.md`](docs/GLOSSARY.md) is a reference for any term they hit and don't recognize.
+1. Read [`docs/ONBOARDING.md`](docs/ONBOARDING.md) **first** — it's a 30-minute walk-through that gets the app running, makes one tiny visible change, and leaves them with a working mental model. Designed for people who don't know terms like "Server Component" yet.
+2. Once you're past that, [`docs/architecture.md`](docs/architecture.md) is the deep dive on how the personalization actually works — how a chat message becomes a visible page change.
+3. [`docs/GLOSSARY.md`](docs/GLOSSARY.md) is a reference for any term you hit and don't recognize.
 4. [`docs/decisions.md`](docs/decisions.md) is an append-only log of *why* we made certain calls — open it when "why is it like this?" comes up.
 
 ---
