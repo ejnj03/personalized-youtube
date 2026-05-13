@@ -40,11 +40,32 @@ export const BackgroundSchema = z
   .default({ kind: 'solid', angle: 180, intensity: 0.7 });
 export type Background = z.infer<typeof BackgroundSchema>;
 
+const fontFamily =  z.enum([
+  // Legacy keys — kept so existing saved patches in the DB still validate.
+  'sans', 'serif', 'mono', 'rounded',
+  // Sans
+  'inter', 'space-grotesk', 'bricolage', 'geist',
+  // Display / condensed
+  'anton', 'big-shoulders', 'unbounded', 'syne',
+  // Display serif
+  'fraunces', 'dm-serif', 'bodoni-moda', 'cormorant',
+  // Body serif
+  'newsreader', 'lora', 'eb-garamond',
+  // Mono
+  'jetbrains', 'ibm-plex-mono', 'space-mono',
+  // Handwritten
+  'caveat', 'permanent-marker', 'architects-daughter',
+  // Rounded
+  'fredoka',
+  // Decorative
+  'monoton', 'bungee',
+]).default('sans');
+
 export const ThemeSchema = z.object({
   mode: z.enum(['light', 'dark']).default('light'),
   accent: HEX.default('#FF0000'),
   fontScale: z.enum(['0.875', '1', '1.125', '1.25']).default('1'),
-  fontFamily: z.enum(['sans', 'serif', 'mono', 'rounded']).default('sans'),
+  fontFamily,
   radius: z.enum(['none', 'sm', 'md', 'lg', 'xl']).default('md'),
   background: BackgroundSchema,
   videoCardDefaults: VideoCardDefaults.default({}),

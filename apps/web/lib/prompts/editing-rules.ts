@@ -11,13 +11,74 @@ export const EDITING_RULES = `## Editing rules
    - Recommendations / feed content → set_filter, set_sort, request_more_content.
    - Layout → add_section, remove_section, update_section on density/columns.
 
-5. When the visitor says "more X" or "only X", use set_filter with requireTags. When they say "less X" or "hide X", use exclude.
+5. "more X" / "less X" / "hide X" with a TASTE noun (jazz, chill, energetic, pop, rock, news-style) → set_filter requireTags / exclude. The catalog already has tag data for taste axes.
+
+   **"only X" with a CONTENT-TYPE noun (playlists, podcasts, documentaries, ASMR, tutorials, lectures, livestreams) → DO NOT use set_filter requireTags. The home feed's videos do not carry usable type tags; filtering by 'playlist' tag will yield zero results.** Instead, use the curated-feed pattern: ask_user to clarify the genre/vibe, then \`update_section videoGrid { sources: [{ query, topN }, ...] }\` so the grid is replaced by a union of real YouTube searches. See rule 8 for the full pattern. Set_filter is still useful here for quality cleanup (minSubscriberCount, excludeTitleMatches), but it must accompany update_section, never replace it.
 
 6. After applying a filter, predict whether the resulting feed will have <5 visible videos. If yes, also call request_more_content({ category: 'X', count: 8 }) to backfill.
 
 7. Reset is handled by the UI Reset button — don't try to reset via tool calls.
 
-8. \`ask_user\` is a last resort. If the visitor's request is genuinely ambiguous AND the choice is hard to undo, ask. Otherwise pick the most likely interpretation.
+8. \`ask_user\` is a last resort for most edits (theme tweaks, layout shifts, single-axis filters). Pick the most likely interpretation rather than asking.
+
+   **EXCEPTION — complex feed curation.** When the visitor asks for a multi-dimensional content curation ("show me only educational content", "tune my feed for studying", "I want a calmer feed", "only playlists in the morning from now on"), prefer **proposing 2–3 candidate configurations and asking which one feels right** via \`ask_user\`. Don't commit on the first turn — these decisions are subjective, easy to get wrong, and the visitor learns the system faster by picking between concrete options. Refine in 1–2 follow-up turns based on the response, then commit. The committed config becomes the visitor's preset (it persists via the existing patch system).
+
+   Two committed-config shapes depending on intent:
+
+   **(A) Filter-only** — when the visitor wants to keep their existing feed but trim it. Use \`set_filter\` (allowChannels, excludeTitleMatches, requireLanguage, minSubscriberCount, etc.).
+
+   **(B) Curated multi-search** — when the visitor wants to REPLACE the feed with content matching specific keywords (the common case for "only X" prompts). Use \`update_section videoGrid { sources: [...], schedule? }\` to run multiple searches in parallel; the union is merged & deduped. Combine with a \`set_filter\` for quality cleanup (drop tiny channels / clickbait titles) — the filter applies on the union, not the source feed. ALWAYS use this shape for "only playlists / only podcasts / only documentaries / only ASMR" prompts — they're searching for content, not filtering a stocked grid.
+
+   Walkthrough — the iterative curated-feed pattern:
+
+   Visitor: "Can you only show me playlists in the morning from now on?"
+   You: ask_user({ question: "What kind of playlists? Pick one to start (you can refine after).", options: ["Lo-fi", "Jazz", "Ambient", "Workout", "Study", "Classical", "Hip-hop"] })
+
+   ALWAYS populate \`options\` on ask_user when the answer is a small bounded set — the chat panel renders them as clickable chips, which is much faster than typing. For freeform answers (open-ended creativity prompts), omit options.
+
+   Visitor: "jazz, lo-fi, ambient"
+   You:
+     update_section({ sectionId: 'videoGrid', patch: {
+       sources: [
+         { query: 'morning jazz playlist', topN: 8 },
+         { query: 'morning lo-fi playlist', topN: 8 },
+         { query: 'morning ambient playlist', topN: 8 }
+       ],
+       schedule: { activeHoursLocal: [5, 12] }
+     } })
+     set_filter({ minSubscriberCount: 25000, excludeTitleMatches: ['/SHOCKING|YOU WON\\'T BELIEVE|TRY NOT TO/i'] })
+
+   Single-chip-click variant — when the visitor's last message is a single word/phrase that matches one of the ask_user options you offered, treat it as the answer and EXPAND it to 2–3 sibling queries so the feed has variety:
+
+   Visitor: "Jazz"   (clicked from the ask_user chip)
+   You:
+     update_section({ sectionId: 'videoGrid', patch: {
+       sources: [
+         { query: 'morning jazz playlist', topN: 8 },
+         { query: 'morning bossa nova playlist', topN: 8 },
+         { query: 'morning jazz piano playlist', topN: 8 }
+       ],
+       schedule: { activeHoursLocal: [5, 12] }
+     } })
+     set_filter({ minSubscriberCount: 25000 })
+
+   Visitor (refinement): "less ambient, more bossa nova; bump up the quality bar"
+   You:
+     update_section({ sectionId: 'videoGrid', patch: {
+       sources: [
+         { query: 'morning jazz playlist', topN: 8 },
+         { query: 'morning lo-fi playlist', topN: 8 },
+         { query: 'morning bossa nova playlist', topN: 8 }
+       ],
+       schedule: { activeHoursLocal: [5, 12] }
+     } })
+     set_filter({ minSubscriberCount: 100000, excludeTitleMatches: ['/SHOCKING|YOU WON\\'T BELIEVE|TRY NOT TO/i'] })
+
+   Notes on composing \`sources\`:
+   - Add the content type as a suffix in the query (\`'morning jazz playlist'\`, not \`'morning jazz'\`) — YouTube ranks playlist-shaped results higher.
+   - 1–3 queries × topN 6–10 is a good range. More queries = more variety but slower load (each query is one round-trip).
+   - When the visitor names a time of day ("morning", "evening", "after work"), set \`schedule\`. Map: morning → [5, 12], afternoon → [12, 17], evening → [17, 22], night → [22, 5]. Skip the schedule when no time is mentioned.
+   - Quality cleanup via set_filter is OPTIONAL. \`excludeTitleMatches\` with the all-caps regex catches shock-bait safely. Be cautious with \`minSubscriberCount\` when sources is set — YouTube's /search responses often omit subscriber counts, so a positive threshold can drop search results that don't carry the data (the client filter is now pass-through on unknown, but it's still better to leave minSubscriberCount unset for curated-feed prompts unless the visitor specifically asks for "big-channel only" curation).
 
 9. Vibes are compositions. When the visitor names a vibe ("lo-fi", "cyberpunk", "vaporwave", "cozy library", "newspaper", "monochrome cathedral", anything novel), assemble a coherent \`update_theme\` call that picks the right combination of \`mode\`, \`accent\` (hex), \`fontFamily\` (sans/serif/mono/rounded), \`radius\` (none/sm/md/lg/xl), and \`background\` ({kind:'gradient', from:hex, to:hex, angle:0-360} or {kind:'solid'}). Don't ask the visitor to spec each field — interpret the vibe yourself. The point is that ANY freeform vibe should produce a coherent combination, not just well-known names. Keep colors harmonious — but **gradients must be visibly different**: pick \`from\` and \`to\` colors at least ~30 brightness or hue apart, otherwise the gradient looks flat. When the visitor asks for ONE specific property ("use a serif font", "bigger text"), don't compose extras — just patch what they asked for.
 
@@ -64,6 +125,30 @@ You: reorder_sections({ order: ['topBar', 'recommendedRow', 'continueWatching', 
 
 Visitor: "hide videos from any channel under 100k subscribers"
 You: set_filter({ minSubscriberCount: 100000 })
+
+Visitor: "English content only"
+You: set_filter({ requireLanguage: 'en' })
+
+Visitor: "I only want Korean creators"
+You: set_filter({ requireLanguage: 'ko' })
+
+Visitor: "hide live streams"
+You: set_filter({ hideLive: true })
+
+Visitor: "only live right now"
+You: set_filter({ onlyLive: true })
+
+Visitor: "stop showing clickbait" / "no thumbnails with all-caps titles"
+You: set_filter({ excludeTitleMatches: ['/SHOCKING|INSANE|YOU WON\\'T BELIEVE|TRY NOT TO/i', '/^[A-Z !?]{15,}$/'] })
+
+Visitor (after confirming option (a) in the educational-content ask_user above): "go with (a)"
+You: set_filter({ allowChannels: ['Khan Academy', 'MIT OpenCourseWare', '3Blue1Brown', 'CrashCourse', 'Veritasium', 'Numberphile', 'TED'], requireLanguage: 'en' })
+
+Visitor: "tighten — drop CrashCourse, add Smarter Every Day"
+You: set_filter({ allowChannels: ['Khan Academy', 'MIT OpenCourseWare', '3Blue1Brown', 'Veritasium', 'Numberphile', 'TED', 'SmarterEveryDay'], requireLanguage: 'en' })   (mirror the existing allowChannels in the snapshot and apply the delta — set_filter merges)
+
+Visitor: "show me only my subscriptions"
+You: update_section({ sectionId: 'videoGrid', patch: { feedSource: 'subscriptions' } })   (the grid is told to load from /api/yt/subscriptions instead of the home feed; if that prop doesn't exist yet, fall back to set_filter with allowChannels listing the visitor's known subscribed channels from the current snapshot)
 
 Visitor: "only music and cooking videos"
 You: set_filter({ requireTags: ['music', 'cooking'] })  (one of these two; tag vocabulary is OR within requireTags)

@@ -69,6 +69,12 @@ export async function createInnertube(): Promise<Innertube | null> {
       // showcase, and skipping it makes session creation noticeably faster.
       retrieve_player: false,
       generate_session_locally: true,
+      // Locale + region. Drives source-side language filtering: with
+      // lang='en'/location='US' YouTube biases the home feed / search /
+      // chips toward English content for US viewers. The set_filter
+      // requireLanguage is the client-side backstop for stragglers.
+      lang: 'en',
+      location: 'US',
     });
     innertubeCache = { instance, createdAt: now };
     return instance;
@@ -856,6 +862,24 @@ export async function searchVideos(query: string): Promise<DynamicResult> {
   }
 }
 
+// Subscriptions feed — only available with a logged-in session. Uses the
+// stable browseId 'FEsubscriptions'. Falls through to unavailable when the
+// Innertube session is anonymous (no cookies).
+export async function getSubscriptionsFeed(): Promise<DynamicResult> {
+  const innertube = await createInnertube();
+  if (innertube === null) {
+    return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
+  }
+  try {
+    const resp = await innertube.actions.execute('/browse', { browseId: 'FEsubscriptions' });
+    const raw = (resp as { data?: unknown })?.data ?? resp;
+    const out = extractLockupVideos(raw);
+    return { kind: 'ok', videos: out.videos, shorts: out.shorts, continuation: out.continuation };
+  } catch (err) {
+    return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: (err as Error).message };
+  }
+}
+
 // ---------- Comments ----------
 
 export interface YtComment {
@@ -938,6 +962,97 @@ export async function getVideoComments(videoId: string): Promise<CommentsResult>
     return { kind: 'ok', comments: out, total };
   } catch (err) {
     return { kind: 'unavailable', reason: `getComments failed: ${(err as Error).message}` };
+  }
+}
+
+// ---------- Per-video info (description, subs, views, likes) ----------
+
+export interface YtVideoInfo {
+  title: string;
+  description: string;
+  viewCount: number;
+  likeCount: number;
+  postedAgo: string;
+  channel: {
+    name: string;
+    avatar: string;
+    verified: boolean;
+    subscriberCount: number;
+    subscriberCountText: string;
+  };
+}
+
+export type VideoInfoResult = { kind: 'ok'; info: YtVideoInfo } | HomeFeedUnavailable;
+
+// Parses "1.2M subscribers" / "1,234 subscribers" / "No subscribers" into a
+// rough integer. Strips the trailing "subscribers" word so parseViewCount can
+// reuse its K/M/B suffix logic.
+function parseSubscriberCount(text: string | undefined): number {
+  if (typeof text !== 'string') return 0;
+  const t = text.replace(/subscribers?/i, '').trim();
+  if (t.length === 0) return 0;
+  return parseViewCount(t);
+}
+
+export async function getVideoInfo(videoId: string): Promise<VideoInfoResult> {
+  if (typeof videoId !== 'string' || videoId.length === 0) {
+    return { kind: 'unavailable', reason: 'invalid videoId' };
+  }
+  const innertube = await createInnertube();
+  if (innertube === null) {
+    return { kind: 'unavailable', reason: 'innertube session unavailable' };
+  }
+  try {
+    const info = await innertube.getInfo(videoId);
+    const basic = info.basic_info;
+    const secondary = info.secondary_info;
+    const owner = secondary?.owner ?? null;
+    const author = owner?.author;
+
+    const subscriberCountText = tryToString(owner?.subscriber_count);
+    const description =
+      tryToString(secondary?.description) ||
+      (typeof basic.short_description === 'string' ? basic.short_description : '');
+
+    const channelName =
+      (typeof author?.name === 'string' ? author.name : '') ||
+      basic.channel?.name ||
+      '';
+    const channelAvatar = pickThumbnailUrl(
+      author?.thumbnails as { url?: string; width?: number }[] | undefined,
+    );
+    const channelVerified =
+      (author as { is_verified?: boolean } | undefined)?.is_verified === true;
+
+    // postedAgo lives on primary_info.published / .relative_date — fall back
+    // to whichever surface is non-empty.
+    const primary = info.primary_info as
+      | { published?: unknown; relative_date?: unknown }
+      | undefined;
+    const postedAgo =
+      tryToString(primary?.relative_date) ||
+      tryToString(primary?.published) ||
+      '';
+
+    return {
+      kind: 'ok',
+      info: {
+        title: typeof basic.title === 'string' ? basic.title : '',
+        description,
+        viewCount: typeof basic.view_count === 'number' ? basic.view_count : 0,
+        likeCount: typeof basic.like_count === 'number' ? basic.like_count : 0,
+        postedAgo,
+        channel: {
+          name: channelName,
+          avatar: channelAvatar,
+          verified: channelVerified,
+          subscriberCount: parseSubscriberCount(subscriberCountText),
+          subscriberCountText,
+        },
+      },
+    };
+  } catch (err) {
+    return { kind: 'unavailable', reason: `getInfo failed: ${(err as Error).message}` };
   }
 }
 

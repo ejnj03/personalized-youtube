@@ -30,6 +30,27 @@ type CommentsState =
   | { status: 'ok'; comments: YtComment[]; total: string | null }
   | { status: 'error'; reason: string };
 
+interface YtVideoInfo {
+  title: string;
+  description: string;
+  viewCount: number;
+  likeCount: number;
+  postedAgo: string;
+  channel: {
+    name: string;
+    avatar: string;
+    verified: boolean;
+    subscriberCount: number;
+    subscriberCountText: string;
+  };
+}
+
+type InfoState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ok'; info: YtVideoInfo }
+  | { status: 'error'; reason: string };
+
 // Compact suggested-video card on the right column. Clicking switches the
 // player without leaving the watch view.
 function SuggestionCard({ video }: { video: Video }) {
@@ -75,37 +96,6 @@ function SuggestionCard({ video }: { video: Video }) {
 export function WatchPage() {
   const { config, watchingId, watchingTitle, setWatching } = usePageStore();
 
-  // Sync watchingId <-> URL ?v= so the back button works and the URL is shareable.
-  useEffect(() => {
-    if (watchingId) {
-      const url = new URL(window.location.href);
-      if (url.searchParams.get('v') !== watchingId) {
-        url.searchParams.set('v', watchingId);
-        window.history.pushState({ v: watchingId }, '', url.toString());
-      }
-    } else {
-      const url = new URL(window.location.href);
-      if (url.searchParams.has('v')) {
-        url.searchParams.delete('v');
-        window.history.pushState({}, '', url.toString());
-      }
-    }
-  }, [watchingId]);
-
-  // Restore watchingId from URL on initial mount + handle browser back button.
-  useEffect(() => {
-    const fromUrl = new URL(window.location.href).searchParams.get('v');
-    if (fromUrl) setWatching(fromUrl);
-    function onPop() {
-      const v = new URL(window.location.href).searchParams.get('v');
-      setWatching(v ?? null);
-    }
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-    // run only once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Pull suggestions from whatever section currently holds videos
   // (VideoGrid in normal mode, or any RecommendedRow). Exclude currentvideo.
   const suggestions: Video[] = useMemo(() => {
@@ -127,6 +117,42 @@ export function WatchPage() {
   }, [config.sections, watchingId]);
 
   const [commentsState, setCommentsState] = useState<CommentsState>({ status: 'idle' });
+  const [infoState, setInfoState] = useState<InfoState>({ status: 'idle' });
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+
+  // Fetch the per-video info (description, subs, views, posted-ago) via the
+  // youtubei adapter. Same cancel-on-switch pattern as comments.
+  useEffect(() => {
+    setDescriptionExpanded(false);
+    if (!watchingId) {
+      setInfoState({ status: 'idle' });
+      return;
+    }
+    let cancelled = false;
+    setInfoState({ status: 'loading' });
+    fetch(`/api/yt/info?v=${encodeURIComponent(watchingId)}`)
+      .then(async (r) => {
+        if (cancelled) return;
+        if (!r.ok) {
+          const data = (await r.json().catch(() => ({}))) as { reason?: string };
+          setInfoState({ status: 'error', reason: data.reason ?? `HTTP ${r.status}` });
+          return;
+        }
+        const data = (await r.json()) as { ok?: boolean; info?: YtVideoInfo; reason?: string };
+        if (!data.ok || !data.info) {
+          setInfoState({ status: 'error', reason: data.reason ?? 'unknown error' });
+          return;
+        }
+        setInfoState({ status: 'ok', info: data.info });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setInfoState({ status: 'error', reason: (err as Error).message });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [watchingId]);
 
   // Fetch real comments via the youtubei adapter when a new video starts.
   // Cancels stale fetches if the visitor switches videos mid-flight.
@@ -180,53 +206,104 @@ export function WatchPage() {
             />
           </div>
 
-          <div>
-            <h1 className="text-xl font-semibold leading-tight">
-              {watchingTitle ?? 'Now playing'}
-            </h1>
-            <div className="mt-3 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                {currentVideo ? (
-                  <Avatar
-                    name={currentVideo.channel.name}
-                    src={currentVideo.channel.avatar}
-                    size="xl"
-                  />
-                ) : (
-                  <Avatar name="YouTube" size="xl" />
-                )}
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {currentVideo?.channel.name ?? 'YouTube'}
-                    {currentVideo?.channel.verified && <span className="ml-1">✓</span>}
-                  </p>
-                  <p className="truncate text-xs text-[color:var(--muted-fg)]">
-                    {currentVideo
-                      ? `${formatViews(currentVideo.channel.subscriberCount)} subscribers`
-                      : 'via embed'}
-                  </p>
-                </div>
-                <button className="ml-2 rounded-full bg-[color:var(--fg)] px-4 py-1.5 text-sm font-medium text-[color:var(--bg)]">
-                  Subscribe
-                </button>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  onClick={() => setWatching(null)}
-                  className="rounded-full bg-[color:var(--muted)] px-4 py-1.5 text-sm hover:bg-[color:var(--border)]"
-                >
-                  ← Back
-                </button>
-              </div>
-            </div>
-          </div>
+          {(() => {
+            // Prefer real watch-page info; fall back to whatever the lockup
+            // entry already had on the home feed so the header doesn't flash
+            // blank while /api/yt/info is in flight.
+            const info = infoState.status === 'ok' ? infoState.info : null;
+            const title = info?.title || watchingTitle || currentVideo?.title || 'Now playing';
+            const channelName = info?.channel.name || currentVideo?.channel.name || 'YouTube';
+            const channelAvatar = info?.channel.avatar || currentVideo?.channel.avatar || '';
+            const channelVerified = info?.channel.verified || currentVideo?.channel.verified || false;
+            const subscriberLine =
+              info?.channel.subscriberCountText ||
+              (info && info.channel.subscriberCount > 0
+                ? `${formatViews(info.channel.subscriberCount)} subscribers`
+                : currentVideo && currentVideo.channel.subscriberCount > 0
+                  ? `${formatViews(currentVideo.channel.subscriberCount)} subscribers`
+                  : infoState.status === 'loading'
+                    ? 'Loading…'
+                    : '');
+            const views = info?.viewCount ?? currentVideo?.views ?? 0;
+            const postedAgo = info?.postedAgo || currentVideo?.postedAgo || '';
+            const likes = info?.likeCount ?? 0;
 
-          <div className="rounded-xl bg-[color:var(--muted)] p-4 text-sm text-[color:var(--muted-fg)]">
-            <p>
-              Personalization tools (chat, theme, layout, filters) still work while watching.
-              Try editing the page through the chat panel — your changes apply when you go back.
-            </p>
-          </div>
+            return (
+              <div>
+                <h1 className="text-xl font-semibold leading-tight">{title}</h1>
+                {(views > 0 || postedAgo) && (
+                  <p className="mt-1 text-xs text-[color:var(--muted-fg)]">
+                    {views > 0 && `${formatViews(views)} views`}
+                    {views > 0 && postedAgo && ' · '}
+                    {postedAgo}
+                  </p>
+                )}
+                <div className="mt-3 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar name={channelName} src={channelAvatar} size="xl" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {channelName}
+                        {channelVerified && <span className="ml-1">✓</span>}
+                      </p>
+                      {subscriberLine && (
+                        <p className="truncate text-xs text-[color:var(--muted-fg)]">
+                          {subscriberLine}
+                        </p>
+                      )}
+                    </div>
+                    <button className="ml-2 rounded-full bg-[color:var(--fg)] px-4 py-1.5 text-sm font-medium text-[color:var(--bg)]">
+                      Subscribe
+                    </button>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {likes > 0 && (
+                      <span className="rounded-full bg-[color:var(--muted)] px-4 py-1.5 text-sm">
+                        ♥ {formatViews(likes)}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setWatching(null)}
+                      className="rounded-full bg-[color:var(--muted)] px-4 py-1.5 text-sm hover:bg-[color:var(--border)]"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const info = infoState.status === 'ok' ? infoState.info : null;
+            const description = info?.description || currentVideo?.description || '';
+            if (infoState.status === 'loading' && !description) {
+              return (
+                <div className="rounded-xl bg-[color:var(--muted)] p-4 text-sm text-[color:var(--muted-fg)]">
+                  Loading description…
+                </div>
+              );
+            }
+            if (!description) return null;
+            return (
+              <div className="rounded-xl bg-[color:var(--muted)] p-4 text-sm text-[color:var(--fg)]">
+                <p
+                  className={`whitespace-pre-wrap ${descriptionExpanded ? '' : 'line-clamp-3'}`}
+                >
+                  {description}
+                </p>
+                {description.length > 200 && (
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionExpanded((v) => !v)}
+                    className="mt-2 text-xs font-medium text-[color:var(--muted-fg)] hover:text-[color:var(--fg)]"
+                  >
+                    {descriptionExpanded ? 'Show less' : 'Show more'}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           <section className="mt-2">
             <h2 className="mb-4 flex items-baseline gap-3 text-base font-semibold">

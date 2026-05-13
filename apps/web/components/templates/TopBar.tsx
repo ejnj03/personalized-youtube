@@ -1,15 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PageConfig, Section, Video } from '@showcase/shared';
 import { usePageStore } from '@/lib/store';
 
 const ROW_SECTIONS_TO_HIDE_FOR_SEARCH: ReadonlyArray<string> = ['ContinueWatchingRow', 'RecommendedRow', 'ShortsRow'];
 
 export function TopBar({ section, config }: { section: Section; config: PageConfig }) {
-  const { dispatch, setYtContinuation, youtubeMode, setActiveNav, setWatching } = usePageStore();
+  const {
+    dispatch,
+    setYtContinuation,
+    youtubeMode,
+    setActiveNav,
+    setWatching,
+    enterSearch,
+    exitSearch,
+    searchQuery,
+    ytContinuation,
+  } = usePageStore();
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
+
+  // Clear the input when search exits (via logo click or browser back) so a
+  // subsequent "/" focus drops you into an empty box, not last search's text.
+  useEffect(() => {
+    if (searchQuery === null) setQuery('');
+    else setQuery(searchQuery);
+  }, [searchQuery]);
 
   if (section.type !== 'TopBar') return null;
   const { logoText, searchPlaceholder, compactSearch, showProfileChip } = section.props;
@@ -25,6 +42,10 @@ export function TopBar({ section, config }: { section: Section; config: PageConf
       if (!res.ok) return;
       const data = (await res.json()) as { ok?: boolean; videos?: Video[] };
       if (!data.ok || !Array.isArray(data.videos) || data.videos.length === 0) return;
+      // Snapshot the home state BEFORE mutating, so the logo / back button
+      // can restore it. enterSearch only snapshots on first entry — repeat
+      // searches reuse the original snapshot so they still return home.
+      enterSearch(q, { config, ytContinuation });
       // Find a VideoGrid to put results in. If the visitor previously asked
       // for MoodBoard / unusual layout and the grid was removed, restore it
       // so search always lands somewhere visible.
@@ -49,14 +70,22 @@ export function TopBar({ section, config }: { section: Section; config: PageConf
       setYtContinuation(null);
       dispatch({ op: 'set_filter', filter: { requireTags: [] } });
       // Hide row sections so only the search results show — matches real YT.
+      // (Restore happens automatically via the home snapshot on exit, so we
+      // don't have to remember which were hidden.)
       for (const s of config.sections) {
         if (ROW_SECTIONS_TO_HIDE_FOR_SEARCH.includes(s.type)) {
-          dispatch({ op: 'update_section', sectionId: s.id, patch: { visible: false } });
+          dispatch({ op: 'remove_section', sectionId: s.id });
         }
       }
     } finally {
       setSearching(false);
     }
+  }
+
+  function goHome() {
+    setWatching(null);
+    setActiveNav('Home', null);
+    exitSearch();
   }
 
   return (
@@ -75,10 +104,7 @@ export function TopBar({ section, config }: { section: Section; config: PageConf
 
       <button
         type="button"
-        onClick={() => {
-          setWatching(null);
-          setActiveNav('Home', null);
-        }}
+        onClick={goHome}
         aria-label={`${logoText} home`}
         className="flex items-center gap-1.5 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
       >

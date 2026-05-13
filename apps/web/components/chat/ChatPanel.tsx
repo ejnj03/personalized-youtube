@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Rnd } from 'react-rnd';
 import { pickRotatingChips, type RecommendedPrompt } from '@/lib/recommended-prompts';
 import { usePageStore } from '@/lib/store';
 import type { Patch, Video } from '@showcase/shared';
@@ -11,6 +10,10 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   toolUses?: Array<{ name: string; rationale?: string }>;
+  // When Claude calls ask_user, the question text is appended to `content`
+  // (so it appears in the message bubble) and the optional answer options
+  // are surfaced as clickable chips beneath the bubble.
+  askOptions?: string[];
 }
 
 const TOOL_VERBS: Record<string, string> = {
@@ -76,12 +79,17 @@ function defaultWindowState(): WindowState {
   };
 }
 
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
 export function ChatPanel({ pageSlug }: { pageSlug: string }) {
   const { config, dispatch, replace, watchingId, watchingTitle } = usePageStore();
   const [open, setOpen] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [windowState, setWindowState] = useState<WindowState | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -185,6 +193,7 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
       const decoder = new TextDecoder();
       let assistantContent = '';
       const toolUses: ChatMessage['toolUses'] = [];
+      let askOptions: string[] | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -196,17 +205,40 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
           if (data === '[DONE]') break;
           try {
             const ev = JSON.parse(data);
+            if (ev.kind === 'debug_request') {
+              console.groupCollapsed('%c[Claude] → request', 'color:#0070f3;font-weight:bold');
+              console.log('system:', ev.payload.system);
+              console.log('tools:', ev.payload.tools);
+              console.log('messages:', ev.payload.messages);
+              console.log('model:', ev.payload.model, 'max_tokens:', ev.payload.max_tokens);
+              console.log('full payload:', ev.payload);
+              console.groupEnd();
+            } else if (ev.kind === 'debug_stream_event') {
+              console.debug('[Claude] stream ←', ev.payload);
+            } else if (ev.kind === 'debug_final') {
+              console.groupCollapsed('%c[Claude] ← final', 'color:#22c55e;font-weight:bold');
+              console.log('content blocks:', ev.payload.content);
+              console.log('usage:', ev.payload.usage);
+              console.log('stop_reason:', ev.payload.stop_reason);
+              console.log('full payload:', ev.payload);
+              console.groupEnd();
+            }
             if (ev.kind === 'text') assistantContent += ev.text;
             if (ev.kind === 'tool_use') toolUses.push({ name: ev.name, rationale: ev.rationale });
-            if (ev.kind === 'patch') dispatch(ev.patch as Patch);
+            if (ev.kind === 'patch') dispatch(ev.patch as Patch, { trace: true });
             if (ev.kind === 'request_more_content') fetchMoreContent(ev.input);
+            if (ev.kind === 'ask_user') {
+              const q = typeof ev.input?.question === 'string' ? ev.input.question : '';
+              if (q) assistantContent += (assistantContent ? '\n\n' : '') + q;
+              if (Array.isArray(ev.input?.options)) askOptions = ev.input.options as string[];
+            }
           } catch {
             /* ignore malformed line */
           }
         }
       }
 
-      setMessages([...next, { role: 'assistant', content: assistantContent, toolUses }]);
+      setMessages([...next, { role: 'assistant', content: assistantContent, toolUses, askOptions }]);
     } catch (err) {
       setMessages([...next, { role: 'assistant', content: `Error: ${(err as Error).message}` }]);
     } finally {
@@ -267,6 +299,77 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
     }
   }
 
+  // Drag from the header. We attach mousemove/mouseup to window (not the
+  // header) so the drag survives the cursor briefly leaving the header strip.
+  const onHeaderMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    // Buttons inside the header (minimize/close) shouldn't start a drag.
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    setWindowState((current) => {
+      if (!current) return current;
+      const startWX = current.x;
+      const startWY = current.y;
+      function onMove(ev: MouseEvent) {
+        setWindowState((s) => {
+          if (!s) return s;
+          const maxX = Math.max(0, window.innerWidth - s.width);
+          const maxY = Math.max(0, window.innerHeight - s.height);
+          return {
+            ...s,
+            x: clamp(startWX + (ev.clientX - startX), 0, maxX),
+            y: clamp(startWY + (ev.clientY - startY), 0, maxY),
+          };
+        });
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        setDragging(false);
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      setDragging(true);
+      return current;
+    });
+  }, []);
+
+  const onResizeMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (e.button !== 0 || minimized) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    setWindowState((current) => {
+      if (!current) return current;
+      const startW = current.width;
+      const startH = current.height;
+      const startWX = current.x;
+      const startWY = current.y;
+      function onMove(ev: MouseEvent) {
+        setWindowState((s) => {
+          if (!s) return s;
+          const maxW = Math.max(MIN_W, window.innerWidth - startWX);
+          const maxH = Math.max(MIN_H, window.innerHeight - startWY);
+          return {
+            ...s,
+            width: clamp(startW + (ev.clientX - startX), MIN_W, maxW),
+            height: clamp(startH + (ev.clientY - startY), MIN_H, maxH),
+          };
+        });
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      return current;
+    });
+  }, [minimized]);
+
   if (!mounted) return null;
 
   if (!open) {
@@ -288,28 +391,22 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
   if (!windowState) return null;
 
   return createPortal(
-    <Rnd
-      size={{ width: windowState.width, height: windowState.height }}
-      position={{ x: windowState.x, y: windowState.y }}
-      minWidth={MIN_W}
-      minHeight={minimized ? MINIMIZED_H : MIN_H}
-      maxHeight={minimized ? MINIMIZED_H : undefined}
-      bounds="window"
-      dragHandleClassName="chat-drag-handle"
-      enableResizing={!minimized}
-      onDragStop={(_, d) => setWindowState((s) => (s ? { ...s, x: d.x, y: d.y } : s))}
-      onResizeStop={(_, __, ref, ___, position) =>
-        setWindowState({
-          width: parseInt(ref.style.width, 10),
-          height: parseInt(ref.style.height, 10),
-          x: position.x,
-          y: position.y,
-        })
-      }
-      style={{ position: 'fixed', zIndex: 40 }}
+    <div
+      style={{
+        position: 'fixed',
+        left: windowState.x,
+        top: windowState.y,
+        width: windowState.width,
+        height: windowState.height,
+        zIndex: 40,
+        userSelect: dragging ? 'none' : undefined,
+      }}
     >
-      <aside className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--bg)] shadow-2xl">
-        <header className="chat-drag-handle flex shrink-0 cursor-grab items-center justify-between border-b border-[color:var(--border)] px-4 py-2 active:cursor-grabbing">
+      <aside className="relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--bg)] shadow-2xl">
+        <header
+          onMouseDown={onHeaderMouseDown}
+          className={`flex shrink-0 items-center justify-between border-b border-[color:var(--border)] px-4 py-2 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        >
           <div className="flex items-center gap-2 select-none">
             <span aria-hidden className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--accent)] text-[10px] text-[color:var(--accent-fg)]">
               ✨
@@ -395,6 +492,19 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
                               ))}
                             </div>
                           )}
+                          {m.role === 'assistant' && m.askOptions && m.askOptions.length > 0 && i === messages.length - 1 && !isStreaming && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {m.askOptions.map((opt, j) => (
+                                <button
+                                  key={j}
+                                  onClick={() => void send(opt)}
+                                  className="rounded-full bg-[color:var(--bg)] px-3 py-1 text-xs text-[color:var(--fg)] border border-[color:var(--border)] hover:bg-[color:var(--accent)] hover:text-[color:var(--accent-fg)] hover:border-[color:var(--accent)] transition-colors"
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </li>
                     );
@@ -472,8 +582,19 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
             </form>
           </>
         )}
+        {!minimized && (
+          <div
+            onMouseDown={onResizeMouseDown}
+            aria-hidden
+            className="absolute bottom-0 right-0 h-3.5 w-3.5 cursor-nwse-resize"
+            style={{
+              backgroundImage:
+                'linear-gradient(135deg, transparent 0 50%, color-mix(in srgb, var(--border) 70%, transparent) 50% 60%, transparent 60% 75%, color-mix(in srgb, var(--border) 70%, transparent) 75% 85%, transparent 85% 100%)',
+            }}
+          />
+        )}
       </aside>
-    </Rnd>,
+    </div>,
     document.body,
   );
 }

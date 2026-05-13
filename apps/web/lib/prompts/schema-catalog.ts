@@ -108,7 +108,33 @@ Top-level theme object. Use update_theme.
   - mode: 'light' | 'dark'
   - accent: hex color string (#RRGGBB)
   - fontScale: '0.875' | '1' | '1.125' | '1.25'
-  - fontFamily: 'sans' | 'serif' | 'mono' | 'rounded'   // serif → bookshop / quiet aesthetic
+  - fontFamily: one of:
+    'inter'              — sans, neutral UI default, Linear/Figma/Notion feel
+    'space-grotesk'      — sans, design-studio, gallery, contemporary art
+    'bricolage'          — variable sans, indie editorial, has soul, 2024+ designer favorite
+    'geist'              — sans, Vercel-current, terminal-product, very 2025
+    'anton'              — condensed display, magazine cover, photography poster
+    'big-shoulders'      — variable condensed, athletic editorial, Chicago, bold
+    'unbounded'          — wide variable display, art-direction, current fashion
+    'syne'               — geometric display with bumps, contemporary art, gallery posters
+    'fraunces'           — variable expressive serif, indie editorial, warm
+    'dm-serif'           — high-contrast serif, luxury, glamour
+    'bodoni-moda'        — classic Vogue fashion editorial
+    'cormorant'          — elegant italic-ready, wedding/soft luxury
+    'newsreader'         — beautiful modern journalism, NYT-feel, longform
+    'lora'               — cozy body serif, bookshop, journal
+    'eb-garamond'        — classical historical serif, literary, formal
+    'jetbrains'          — dev terminal classic
+    'ibm-plex-mono'      — mono with character, archival, design-aware
+    'space-mono'         — retro-futurist mono, 70s sci-fi, slightly weird
+    'caveat'             — friendly handwriting, scrapbook, personal note
+    'permanent-marker'   — bold sharpie, zine, lush, energetic
+    'architects-daughter'— blueprint sketch, architectural notes, draftsman
+    'fredoka'            — rounded soft sans, friendly, candy, kids/cute
+    'monoton'            — art-deco neon signage, 1920s marquee, Vegas
+    'bungee'             — urban transit signage, wayfinding, mural-ready
+    // Legacy keys (kept for backward-compat with saved patches):
+    'sans' | 'serif' | 'mono' | 'rounded' 
   - radius: 'none'|'sm'|'md'|'lg'|'xl'
   - chromeDim: 0..1   // dims TopBar+Sidebar so an ambient bg shines through
   - grain: 0..1       // global film grain overlay (looks great with sampled bg)
@@ -133,6 +159,11 @@ Top-level theme object. Use update_theme.
 
 VideoGrid section also has a \`layout: 'grid' | 'shelves' | 'list'\` prop. 'shelves' is a 2-column bookshop-style layout with section titles between groups.
 
+VideoGrid also accepts curated-feed props that REPLACE the home feed with a union of search queries:
+  - sources: Array<{ query: string, topN?: number }>  // each query is run against YouTube /search; top N from each is merged & deduped by video id. Existing set_filter applies on top (so set minSubscriberCount / excludeTitleMatches for quality cleanup).
+  - schedule: { activeHoursLocal: [start, end] }      // 0-23, end exclusive. Wraps midnight when start>end. Outside the window the grid falls back to the static \`videos\` prop. Omit when the visitor doesn't name a time.
+This is the right mechanism for prompts like "only show me playlists in the morning", "tune my feed for studying after dinner", or any persistent content curation. Use the iterative ask_user pattern (see editing rule 8) to gather 1–3 concrete keywords before composing the sources array.
+
 ## Filter and sort
 
 Top-level state, edited via set_filter and set_sort:
@@ -144,7 +175,13 @@ Top-level state, edited via set_filter and set_sort:
       showWatchedOverlay?: boolean,     // dim+badge instead of hiding
       chapterFilters?: string[],        // kinds whose segments the player auto-skips
       autoSkip?: boolean,               // whether chapterFilters actually seek
-      moodFilter?: string                // scope to one mood id
+      moodFilter?: string,               // scope to one mood id
+      requireLanguage?: 'en'|'ko'|'ja'|'zh'|'ar'|'ru',  // heuristic over title AND channel-name script — can't see caption tracks, so captioned-only English videos with non-English titles may still slip through or get dropped
+      allowChannels?: string[],          // inverse of blockChannels — only these creators survive
+      requireTitleMatches?: string[],    // keep videos whose title matches one — substring OR '/regex/flags'
+      excludeTitleMatches?: string[],    // drop videos whose title matches one — same shape
+      hideLive?: boolean,                // drop live/upcoming/premiere streams
+      onlyLive?: boolean                 // only keep live/upcoming/premiere streams
     }
   - sort: {
       by: 'recommended'|'recent'|'popular'|'duration'|'density'|'mood',

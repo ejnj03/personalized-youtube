@@ -22,6 +22,59 @@ function channelMatches(filterChannel: string, videoChannel: string): boolean {
     || videoChannel.toLowerCase().includes(filterChannel.toLowerCase().trim());
 }
 
+// Unicode script ranges for title-language heuristic. We don't try to detect
+// every language — just the ones with distinctive non-overlapping scripts.
+const LANG_SCRIPTS: Record<string, RegExp> = {
+  en: /[A-Za-z]/g,
+  ko: /[가-힯ᄀ-ᇿ㄰-㆏]/g,
+  ja: /[぀-ゟ゠-ヿ]/g,
+  zh: /[一-鿿]/g,
+  ar: /[؀-ۿ]/g,
+  ru: /[Ѐ-ӿ]/g,
+};
+
+// Score: what fraction of `text`'s non-punctuation chars are in `pattern`.
+function scriptShare(text: string, pattern: RegExp): number {
+  const stripped = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
+  if (stripped.length === 0) return 0;
+  const matches = stripped.match(pattern) ?? [];
+  return matches.length / stripped.length;
+}
+
+// Keep a video when EITHER its title OR its channel name is at least ~25%
+// the target script. The OR catches international creators who title in
+// their native script but have English channel names (e.g. "Asian Boss",
+// "NHK World") — those typically ship English audio or captions, so
+// dropping them is more wrong than letting them through. Caveat: we can't
+// see actual caption-track languages from the home/search feed shape —
+// that would require a per-video transcript fetch. This stays a heuristic.
+function passLanguageFilter(title: string, channelName: string, requiredLang: string): boolean {
+  const pattern = LANG_SCRIPTS[requiredLang];
+  if (!pattern) return true;
+  return scriptShare(title, pattern) > 0.25 || scriptShare(channelName, pattern) > 0.25;
+}
+
+// '/regex/flags' → RegExp match; otherwise case-insensitive substring.
+function titleMatchesPattern(title: string, pattern: string): boolean {
+  if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+    const lastSlash = pattern.lastIndexOf('/');
+    const body = pattern.slice(1, lastSlash);
+    const flags = pattern.slice(lastSlash + 1) || 'i';
+    try {
+      return new RegExp(body, flags).test(title);
+    } catch {
+      return false;
+    }
+  }
+  return title.toLowerCase().includes(pattern.toLowerCase());
+}
+
+// YouTube's duration field is 'LIVE'/'PREMIERE'/'UPCOMING'/'WAITING' for
+// non-finalized streams; otherwise a HH:MM:SS or MM:SS clip length.
+function isLiveDuration(duration: string): boolean {
+  return /live|premiere|upcoming|waiting/i.test(duration);
+}
+
 export function applyFeedFilter(videos: Video[], config: PageConfig): Video[] {
   const { filter, sort } = config;
   let out = videos;
@@ -50,7 +103,12 @@ export function applyFeedFilter(videos: Video[], config: PageConfig): Video[] {
   }
   if (filter.minSubscriberCount || filter.maxSubscriberCount) {
     out = out.filter((v) => {
-      const subs = v.channel.subscriberCount ?? 0;
+      const subs = v.channel.subscriberCount;
+      // Missing data shouldn't read as "fails the threshold". YouTube's
+      // /search responses commonly omit subscriber counts; treating undefined
+      // as 0 would silently drop every search result against any positive
+      // minSubscriberCount. Pass-through on unknown is the safer default.
+      if (typeof subs !== 'number') return true;
       if (filter.minSubscriberCount && subs < filter.minSubscriberCount) return false;
       if (filter.maxSubscriberCount && subs > filter.maxSubscriberCount) return false;
       return true;
@@ -69,6 +127,31 @@ export function applyFeedFilter(videos: Video[], config: PageConfig): Video[] {
       if (typeof v.mood === 'string' && v.mood.toLowerCase() === m) return true;
       return v.tags.some((t) => t.toLowerCase() === m);
     });
+  }
+  if (typeof filter.requireLanguage === 'string' && filter.requireLanguage.length > 0) {
+    const lang = filter.requireLanguage;
+    out = out.filter((v) => passLanguageFilter(v.title, v.channel.name, lang));
+  }
+  if (filter.allowChannels.length > 0) {
+    out = out.filter((v) =>
+      filter.allowChannels.some((c) => channelMatches(c, v.channel.name)),
+    );
+  }
+  if (filter.requireTitleMatches.length > 0) {
+    out = out.filter((v) =>
+      filter.requireTitleMatches.some((p) => titleMatchesPattern(v.title, p)),
+    );
+  }
+  if (filter.excludeTitleMatches.length > 0) {
+    out = out.filter(
+      (v) => !filter.excludeTitleMatches.some((p) => titleMatchesPattern(v.title, p)),
+    );
+  }
+  if (filter.hideLive) {
+    out = out.filter((v) => !isLiveDuration(v.duration));
+  }
+  if (filter.onlyLive) {
+    out = out.filter((v) => isLiveDuration(v.duration));
   }
 
   switch (sort.by) {

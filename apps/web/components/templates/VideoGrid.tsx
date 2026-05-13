@@ -1,10 +1,29 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PageConfig, Section, Video } from '@showcase/shared';
 import { VideoCard } from './VideoCard';
 import { applyFeedFilter } from './_filter';
 import { usePageStore } from '@/lib/store';
+
+interface CuratedSource {
+  query: string;
+  topN: number;
+}
+
+interface CuratedSchedule {
+  activeHoursLocal: [number, number];
+}
+
+// True when the visitor's current local hour falls in [start, end) of the
+// schedule window. Windows that wrap midnight (start > end) are handled too.
+function isScheduleActiveNow(schedule: CuratedSchedule | undefined): boolean {
+  if (!schedule?.activeHoursLocal) return true;
+  const hour = new Date().getHours();
+  const [start, end] = schedule.activeHoursLocal;
+  if (start <= end) return hour >= start && hour < end;
+  return hour >= start || hour < end;
+}
 
 const COLUMN_CLASSES = {
   2: 'grid-cols-1 sm:grid-cols-2',
@@ -54,6 +73,82 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
   const sectionId = section.id;
   const sectionVideos = section.type === 'VideoGrid' ? section.props.videos : [];
 
+  // ---- Curated feed (multi-query union) ----
+  const sources: CuratedSource[] =
+    (section.type === 'VideoGrid' ? section.props.sources : []) ?? [];
+  const schedule: CuratedSchedule | undefined =
+    section.type === 'VideoGrid' ? section.props.schedule : undefined;
+  const sourcesKey = useMemo(() => JSON.stringify(sources), [sources]);
+
+  const [curatedVideos, setCuratedVideos] = useState<Video[] | null>(null);
+  const [isLoadingCurated, setIsLoadingCurated] = useState(false);
+  // Forces a re-render once a minute so the schedule window can flip on/off
+  // without requiring user interaction. We never read the value — the state
+  // update is the point.
+  const [, setScheduleTick] = useState(0);
+
+  useEffect(() => {
+    if (!schedule) return;
+    const id = setInterval(() => setScheduleTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [schedule]);
+
+  const scheduleActive = isScheduleActiveNow(schedule);
+  const shouldUseCurated = sources.length > 0 && scheduleActive;
+
+  useEffect(() => {
+    if (!shouldUseCurated) {
+      if (sources.length > 0 && !scheduleActive) {
+        console.log(
+          '%c[curated feed] paused — outside schedule window',
+          'color:#f59e0b;font-weight:bold',
+          { schedule, currentHour: new Date().getHours() },
+        );
+      }
+      setCuratedVideos(null);
+      return;
+    }
+    console.log(
+      '%c[curated feed] fetching',
+      'color:#06b6d4;font-weight:bold',
+      { sources, count: sources.length },
+    );
+    let cancelled = false;
+    setIsLoadingCurated(true);
+    Promise.all(
+      sources.map((s) =>
+        fetch(`/api/yt/search?q=${encodeURIComponent(s.query)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: { ok?: boolean; videos?: Video[] } | null) =>
+            Array.isArray(d?.videos) ? (d.videos as Video[]).slice(0, s.topN) : [],
+          )
+          .catch(() => [] as Video[]),
+      ),
+    )
+      .then((arrays) => {
+        if (cancelled) return;
+        const merged = new Map<string, Video>();
+        for (const arr of arrays) {
+          for (const v of arr) {
+            if (!merged.has(v.id)) merged.set(v.id, v);
+          }
+        }
+        console.log(
+          '%c[curated feed] merged',
+          'color:#06b6d4;font-weight:bold',
+          { perQuery: arrays.map((a) => a.length), totalUnique: merged.size },
+        );
+        setCuratedVideos(Array.from(merged.values()));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingCurated(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourcesKey, shouldUseCurated]);
+  // ---- end curated feed ----
+
   // Infinite scroll: when the sentinel scrolls into view AND we have a
   // continuation token, fetch the next page and append to this section.
   useEffect(() => {
@@ -96,8 +191,11 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
 
   if (section.type !== 'VideoGrid') return null;
   const { columns, density, videos, layout } = section.props;
+  // When the curated-feed path is active and we have results, those replace
+  // the static `videos` prop. Existing nav + feed filters still apply on top.
+  const effectiveVideos = shouldUseCurated && curatedVideos ? curatedVideos : videos;
   const d = DENSITY[density];
-  const navFiltered = applyNavFilter(videos, activeNav, selectedChannel);
+  const navFiltered = applyNavFilter(effectiveVideos, activeNav, selectedChannel);
   const filtered = applyFeedFilter(navFiltered, config);
 
   if (filtered.length === 0) {

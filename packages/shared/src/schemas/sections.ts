@@ -36,6 +36,31 @@ export const VideoGrid = baseSection('VideoGrid', {
   // 'list'    — single column, horizontal cards, dense info.
   layout: z.enum(['grid', 'shelves', 'list']).default('grid'),
   videos: z.array(Video).default([]),
+  // Curated-feed sources. When non-empty AND the schedule window (if set) is
+  // active, the grid loads videos by running each search query in parallel,
+  // taking the top `topN` from each, and merging them (deduped by video id).
+  // Existing client-side filters (requireLanguage, minSubscriberCount, etc.)
+  // run on the union, so low-quality stragglers still get dropped.
+  sources: z
+    .array(
+      z.object({
+        query: z.string(),
+        topN: z.number().int().positive().default(8),
+      }),
+    )
+    .default([]),
+  // Time-of-day gating. When set, `sources` only apply when the visitor's
+  // local hour is within [start, end) — end exclusive, both 0–23. Outside
+  // the window, the grid falls back to the static `videos` array.
+  // Wraps midnight when start > end (e.g. [22, 6] = 10pm–6am).
+  schedule: z
+    .object({
+      activeHoursLocal: z.tuple([
+        z.number().int().min(0).max(23),
+        z.number().int().min(0).max(23),
+      ]),
+    })
+    .optional(),
 });
 
 export const RecommendedRow = baseSection('RecommendedRow', {

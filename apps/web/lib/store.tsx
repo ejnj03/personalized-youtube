@@ -10,10 +10,19 @@ export interface YtChipEntry {
 
 export type NavKey = 'Home' | 'Shorts' | 'Subscriptions' | 'You' | 'Library' | 'History';
 
+// Pre-search snapshot of the home page. We capture the whole config (not just
+// the videos) because search mutates several sections at once — grid videos,
+// row visibility, filter state — and restoring piecemeal would have to know
+// every section the search touches.
+export interface HomeSnapshot {
+  config: PageConfig;
+  ytContinuation: string | null;
+}
+
 interface PageStoreValue {
   config: PageConfig;
   pageSlug: string;
-  dispatch: (patch: Patch, options?: { persist?: boolean; rationale?: string }) => void;
+  dispatch: (patch: Patch, options?: { persist?: boolean; rationale?: string; trace?: boolean }) => void;
   replace: (config: PageConfig) => void;
   // YouTube-source extras: continuation token for infinite scroll, mutable
   // so the grid can update it after each /api/yt/more page lands.
@@ -35,6 +44,12 @@ interface PageStoreValue {
   activeNav: NavKey;
   selectedChannel: string | null;
   setActiveNav: (key: NavKey, channel?: string | null) => void;
+  // Search mode: when non-null, the page is showing search results.
+  // enterSearch captures a one-shot snapshot of the home state on first
+  // entry; exitSearch restores that snapshot (logo click / back button).
+  searchQuery: string | null;
+  enterSearch: (query: string, snapshot: HomeSnapshot) => void;
+  exitSearch: () => void;
 }
 
 const PageStoreContext = createContext<PageStoreValue | null>(null);
@@ -62,6 +77,24 @@ export function PageStoreProvider({
   const [watchingTitle, setWatchingTitle] = useState<string | null>(null);
   const [activeNav, setActiveNavState] = useState<NavKey>('Home');
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [homeSnapshot, setHomeSnapshot] = useState<HomeSnapshot | null>(null);
+  const enterSearch = useCallback((query: string, snapshot: HomeSnapshot) => {
+    setSearchQuery(query);
+    // Only snapshot on first entry; back-to-back searches preserve the
+    // original home state so logo-click always lands on the real home.
+    setHomeSnapshot((prev) => prev ?? snapshot);
+  }, []);
+  const exitSearch = useCallback(() => {
+    setHomeSnapshot((snap) => {
+      if (snap) {
+        setConfig(snap.config);
+        setYtContinuation(snap.ytContinuation);
+      }
+      return null;
+    });
+    setSearchQuery(null);
+  }, []);
   const setActiveNav = useCallback((key: NavKey, channel?: string | null) => {
     setActiveNavState(key);
     setSelectedChannel(typeof channel === 'string' ? channel : null);
@@ -72,9 +105,30 @@ export function PageStoreProvider({
   }, []);
   const youtubeMode = initialYoutubeMode;
   const dispatch = useCallback(
-    (patch: Patch, options?: { persist?: boolean; rationale?: string }) => {
-      setConfig((current) => applyPatch(current, patch));
+    (patch: Patch, options?: { persist?: boolean; rationale?: string; trace?: boolean }) => {
+      setConfig((current) => {
+        const next = applyPatch(current, patch);
+        if (options?.trace) {
+          console.groupCollapsed(
+            `%c[store] applyPatch · ${patch.op}`,
+            'color:#a855f7;font-weight:bold',
+          );
+          console.log('patch:', patch);
+          console.log('config before:', current);
+          console.log('config after:', next);
+          console.groupEnd();
+        }
+        return next;
+      });
       if (options?.persist) {
+        if (options?.trace) {
+          console.log(
+            '%c[store] persist →',
+            'color:#f59e0b;font-weight:bold',
+            '/api/patch',
+            { slug: pageSlug, patch, rationale: options.rationale },
+          );
+        }
         // fire-and-forget; UI already updated optimistically
         fetch('/api/patch', {
           method: 'POST',
@@ -105,6 +159,9 @@ export function PageStoreProvider({
         activeNav,
         selectedChannel,
         setActiveNav,
+        searchQuery,
+        enterSearch,
+        exitSearch,
       }}
     >
       {children}

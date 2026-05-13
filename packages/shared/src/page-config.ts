@@ -27,6 +27,26 @@ export const FilterStateSchema = z.object({
   // moodFilter: only show videos whose computed mood matches this id. Set
   // by clicking a mood chip on the MoodBoard or via "show me focus stuff".
   moodFilter: z.string().optional(),
+  // requireLanguage: heuristic over title characters. Drops videos whose
+  // titles are dominated by a different script than the one named here.
+  // Common values: 'en' | 'ko' | 'ja' | 'zh' | 'ar' | 'ru'.
+  requireLanguage: z.string().optional(),
+  // allowChannels: inverse of blockChannels. When non-empty, ONLY videos
+  // whose channel name matches one of these survive. Useful for "only show
+  // me Khan Academy, MIT OCW, 3Blue1Brown" style curation.
+  allowChannels: z.array(z.string()).default([]),
+  // requireTitleMatches: keep only videos whose titles match one of these
+  // patterns (case-insensitive substring OR a /regex/ string like '/^how /i').
+  requireTitleMatches: z.array(z.string()).default([]),
+  // excludeTitleMatches: drop videos whose titles match any of these
+  // patterns. Same shape as requireTitleMatches.
+  excludeTitleMatches: z.array(z.string()).default([]),
+  // hideLive: drop live/upcoming/premiere streams from the feed. Detected
+  // from the duration string (YouTube serves 'LIVE'/'PREMIERE'/'UPCOMING'
+  // there for non-finalized streams).
+  hideLive: z.boolean().default(false),
+  // onlyLive: inverse — only keep live/upcoming/premiere streams.
+  onlyLive: z.boolean().default(false),
 });
 export type FilterState = z.infer<typeof FilterStateSchema>;
 

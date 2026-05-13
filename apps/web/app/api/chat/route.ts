@@ -137,16 +137,20 @@ export async function POST(req: NextRequest) {
       let stopReason: string | null = null;
       let lastMessageId: string | undefined;
 
+      const requestPayload = {
+        model: MODEL_OPUS,
+        max_tokens: 1024,
+        system: [sys.role, sys.schemaCatalog, sys.editingRules],
+        tools: TOOL_DEFINITIONS,
+        messages,
+      };
+      send({ kind: 'debug_request', payload: requestPayload });
+
       try {
-        const response = anthropic.messages.stream({
-          model: MODEL_OPUS,
-          max_tokens: 1024,
-          system: [sys.role, sys.schemaCatalog, sys.editingRules],
-          tools: TOOL_DEFINITIONS as any,
-          messages,
-        });
+        const response = anthropic.messages.stream(requestPayload as any);
 
         for await (const ev of response) {
+          send({ kind: 'debug_stream_event', payload: ev });
           if (ev.type === 'message_start') lastMessageId = ev.message.id;
           if (ev.type === 'content_block_start' && ev.content_block.type === 'tool_use') {
             send({ kind: 'tool_use', name: ev.content_block.name });
@@ -162,6 +166,7 @@ export async function POST(req: NextRequest) {
 
         const finalMessage = await response.finalMessage();
         finalUsage = finalMessage.usage;
+        send({ kind: 'debug_final', payload: { content: finalMessage.content, usage: finalUsage, stop_reason: stopReason } });
 
         for (const block of finalMessage.content) {
           if (block.type === 'text') {
