@@ -21,11 +21,17 @@ import {
 
 interface InnertubeCacheEntry {
   instance: Innertube;
+  authenticated: boolean;
   createdAt: number;
 }
 
 const INNERTUBE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 let innertubeCache: InnertubeCacheEntry | null = null;
+
+export interface InnertubeSession {
+  instance: Innertube;
+  authenticated: boolean;
+}
 
 export interface HomeFeedOk {
   kind: 'ok';
@@ -44,40 +50,37 @@ export type HomeFeedResult = HomeFeedOk | HomeFeedUnavailable;
 
 // ---------- Innertube instance management ----------
 
-export async function createInnertube(): Promise<Innertube | null> {
+export async function createInnertube(): Promise<InnertubeSession | null> {
   const now = Date.now();
   if (innertubeCache !== null && now - innertubeCache.createdAt < INNERTUBE_TTL_MS) {
-    return innertubeCache.instance;
+    return { instance: innertubeCache.instance, authenticated: innertubeCache.authenticated };
   }
 
-  const result = await readYoutubeCookies();
-  if (result.kind !== 'ok') {
-    console.warn(`[innertube] cookies unavailable: ${result.reason}`);
-    return null;
+  // Try authenticated mode first (local Chrome cookies). If unavailable
+  // (no Chrome / no cookies / on Vercel / cookies expired), fall back to
+  // anonymous mode — works for search, video info, comments, browse, and
+  // sidebar suggestions. Only personalized endpoints (home feed, subs)
+  // require authentication.
+  let cookieHeader = '';
+  const cookieResult = await readYoutubeCookies();
+  if (cookieResult.kind === 'ok') {
+    cookieHeader = composeCookieHeader(cookieResult.cookies);
+  } else {
+    console.warn(`[innertube] cookies unavailable: ${cookieResult.reason} — falling back to anonymous`);
   }
 
-  const cookieHeader = composeCookieHeader(result.cookies);
-  if (cookieHeader.length === 0) {
-    console.warn('[innertube] cookie header empty after compose');
-    return null;
-  }
+  const authenticated = cookieHeader.length > 0;
 
   try {
     const instance = await Innertube.create({
-      cookie: cookieHeader,
-      // Don't fetch the JS player — we don't decipher streams in the
-      // showcase, and skipping it makes session creation noticeably faster.
+      ...(authenticated ? { cookie: cookieHeader } : {}),
       retrieve_player: false,
       generate_session_locally: true,
-      // Locale + region. Drives source-side language filtering: with
-      // lang='en'/location='US' YouTube biases the home feed / search /
-      // chips toward English content for US viewers. The set_filter
-      // requireLanguage is the client-side backstop for stragglers.
       lang: 'en',
       location: 'US',
     });
-    innertubeCache = { instance, createdAt: now };
-    return instance;
+    innertubeCache = { instance, authenticated, createdAt: now };
+    return { instance, authenticated };
   } catch (err) {
     console.warn(`[innertube] Innertube.create failed: ${(err as Error).message}`);
     return null;
@@ -716,14 +719,18 @@ export async function getHomeFeed(): Promise<HomeFeedResult> {
 }
 
 async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', reason: 'innertube session unavailable' };
   }
+  if (!session.authenticated) {
+    // Personalized home feed needs login — anonymous /browse FEwhat_to_watch
+    // returns a generic trending feed, not "your" feed. Bail so the adapter
+    // selector falls back to the mock catalog on Vercel.
+    return { kind: 'unavailable', reason: 'home feed requires authentication' };
+  }
+  const innertube = session.instance;
 
-  // Bypass the library's high-level parser entirely (it crashes on YouTube's
-  // newer node types like FlowStep / TalkToRecsView / ChipsShelfView). Use
-  // the raw actions.execute API and run our own lockupViewModel walker.
   let raw: unknown;
   try {
     const resp = await innertube.actions.execute('/browse', {
@@ -785,10 +792,11 @@ export interface DynamicResult {
 // Fetches the next page of videos given a continuation token. Used by the
 // VideoGrid's IntersectionObserver for infinite scroll.
 export async function getMoreVideos(token: string): Promise<DynamicResult> {
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
   }
+  const innertube = session.instance;
   try {
     const resp = await innertube.actions.execute('/browse', { token });
     const raw = (resp as { data?: unknown })?.data ?? resp;
@@ -809,10 +817,11 @@ export async function getMoreVideos(token: string): Promise<DynamicResult> {
 //   - Legacy browse params get sent as `params` (kept for safety; legacy is
 //     defensive — YouTube may resurrect this path).
 export async function getBrowse(browseId: string, params?: string): Promise<DynamicResult> {
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
   }
+  const innertube = session.instance;
   try {
     const body: Record<string, unknown> = {};
     if (typeof params === 'string' && params.length > 0) {
@@ -848,10 +857,11 @@ export async function getBrowse(browseId: string, params?: string): Promise<Dyna
 // Search runs against the user's logged-in account so personalized suggestions
 // surface. Same lockup walker handles the response shape.
 export async function searchVideos(query: string): Promise<DynamicResult> {
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
   }
+  const innertube = session.instance;
   try {
     const resp = await innertube.actions.execute('/search', { query });
     const raw = (resp as { data?: unknown })?.data ?? resp;
@@ -866,10 +876,14 @@ export async function searchVideos(query: string): Promise<DynamicResult> {
 // stable browseId 'FEsubscriptions'. Falls through to unavailable when the
 // Innertube session is anonymous (no cookies).
 export async function getSubscriptionsFeed(): Promise<DynamicResult> {
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
   }
+  if (!session.authenticated) {
+    return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'subscriptions require authentication' };
+  }
+  const innertube = session.instance;
   try {
     const resp = await innertube.actions.execute('/browse', { browseId: 'FEsubscriptions' });
     const raw = (resp as { data?: unknown })?.data ?? resp;
@@ -925,10 +939,11 @@ export async function getVideoComments(videoId: string): Promise<CommentsResult>
   if (typeof videoId !== 'string' || videoId.length === 0) {
     return { kind: 'unavailable', reason: 'invalid videoId' };
   }
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', reason: 'innertube session unavailable' };
   }
+  const innertube = session.instance;
   try {
     const result = await innertube.getComments(videoId, 'TOP_COMMENTS');
     const total = typeof (result as { header?: { comments_count?: { text?: string } } }).header?.comments_count?.text === 'string'
@@ -998,10 +1013,11 @@ export async function getVideoInfo(videoId: string): Promise<VideoInfoResult> {
   if (typeof videoId !== 'string' || videoId.length === 0) {
     return { kind: 'unavailable', reason: 'invalid videoId' };
   }
-  const innertube = await createInnertube();
-  if (innertube === null) {
+  const session = await createInnertube();
+  if (session === null) {
     return { kind: 'unavailable', reason: 'innertube session unavailable' };
   }
+  const innertube = session.instance;
   try {
     const info = await innertube.getInfo(videoId);
     const basic = info.basic_info;
