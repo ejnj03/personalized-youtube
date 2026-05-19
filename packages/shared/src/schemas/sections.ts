@@ -66,6 +66,17 @@ export const VideoGrid = baseSection('VideoGrid', {
 export const RecommendedRow = baseSection('RecommendedRow', {
   headline: z.string().default('Recommended for you'),
   videos: z.array(Video).default([]),
+  // Same curated-feed contract as VideoGrid.sources. When non-empty, the row
+  // fetches videos by running each query and merging the top `topN` from each.
+  // Used by chat when it adds a topical row like "Lo-fi, acoustic, jazz".
+  sources: z
+    .array(
+      z.object({
+        query: z.string(),
+        topN: z.number().int().positive().default(8),
+      }),
+    )
+    .default([]),
 });
 
 export const ShortsRow = baseSection('ShortsRow', {

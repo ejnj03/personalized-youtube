@@ -90,14 +90,6 @@ async function main() {
       },
     },
     {
-      id: 'recommendedRow',
-      type: 'RecommendedRow',
-      props: {
-        headline: 'Recommended for you',
-        videos: recommendedVideos,
-      },
-    },
-    {
       id: 'shortsRow',
       type: 'ShortsRow',
       props: {
@@ -119,6 +111,14 @@ async function main() {
         columns: (existingGrid?.props as { columns?: 2 | 3 | 4 | 5 })?.columns ?? 4,
         density: (existingGrid?.props as { density?: 'compact' | 'cozy' | 'comfortable' })?.density ?? 'cozy',
         videos: gridVideos,
+      },
+    },
+    {
+      id: 'recommendedRow',
+      type: 'RecommendedRow',
+      props: {
+        headline: 'Recommended for you',
+        videos: recommendedVideos,
       },
     },
     {

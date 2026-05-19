@@ -30,6 +30,7 @@ Main feed grid. Props:
 Horizontal carousel of recommendations. Props:
   - headline: string
   - videos: Video[] — managed by adapter
+  - sources: Array<{ query: string, topN?: number }> — same contract as VideoGrid.sources. When you add_section a topical row ("Lo-fi, acoustic, jazz", "Indie game devlogs"), set \`sources\` with 1–3 concrete search queries; the row will populate from real /search results. Do NOT leave \`videos\` empty without \`sources\` — the row will render blank.
 
 ### ShortsRow
 Short-form video shelf. Props:

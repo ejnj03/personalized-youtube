@@ -87,6 +87,24 @@ export async function getRenderedPage(
   // Re-parse through the schema so newer fields with .default() get filled in
   // for rows seeded before the schema grew.
   let config = PageConfigSchema.parse(site.base_config) as PageConfig;
+
+  // Move RecommendedRow to render after VideoGrid so the main feed is the
+  // primary entry point rather than the recommended carousel. Handles pages
+  // seeded before the section-order change without requiring a re-seed.
+  {
+    const grid = config.sections.findIndex((s) => s.type === 'VideoGrid');
+    const rec = config.sections.findIndex((s) => s.type === 'RecommendedRow');
+    if (grid !== -1 && rec !== -1 && rec < grid) {
+      const next = [...config.sections];
+      const [recSection] = next.splice(rec, 1);
+      const gridAfterSplice = next.findIndex((s) => s.type === 'VideoGrid');
+      if (recSection !== undefined && gridAfterSplice !== -1) {
+        next.splice(gridAfterSplice + 1, 0, recSection);
+        config = { ...config, sections: next };
+      }
+    }
+  }
+
   let ytContinuation: string | null = null;
   let ytChips: YtChipMeta[] = [];
 

@@ -783,6 +783,8 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
       { label: 'Science',   query: 'science explained' },
     ];
     const seen = new Set<string>();
+    const PER_CATEGORY = 18;
+    let lastSearchContinuation: string | null = null;
     for (const { label, query } of queries) {
       try {
         const resp = await innertube.actions.execute('/search', { query });
@@ -790,6 +792,7 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
         const more = extractLockupVideos(raw2);
         let added = 0;
         for (const v of more.videos) {
+          if (added >= PER_CATEGORY) break;
           if (!seen.has(v.id)) {
             seen.add(v.id);
             videos.push(v);
@@ -798,11 +801,63 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
         }
         if (added > 0) {
           anonChips.push({ text: label, params: `q:${query}`, isSelected: false });
+          if (more.continuation) lastSearchContinuation = more.continuation;
         }
-        if (videos.length >= 40) break;
       } catch (err) {
         console.warn(`[innertube] anon-feed search "${query}" failed: ${(err as Error).message}`);
       }
+    }
+    // Carry the last search's continuation as the synthetic feed's pagination
+    // anchor. The scroll handler hits getMoreVideos(token); for anon synthetic
+    // feeds we tag it with `anon:<token>` so getMoreVideos knows to keep
+    // pulling search pages instead of calling /browse.
+    if (lastSearchContinuation !== null) {
+      token = `anon:${lastSearchContinuation}`;
+    } else {
+      token = 'anon:';
+    }
+
+    // Synthesize a shorts row by searching short-form content. Search results
+    // include shorts (videos with sub-60s durations); we keep the short ones
+    // and reshape them as `Short` entries.
+    try {
+      const resp = await innertube.actions.execute('/search', {
+        query: 'viral shorts',
+      });
+      const raw2 = (resp as { data?: unknown })?.data ?? resp;
+      const more = extractLockupVideos(raw2);
+      const shortsSeen = new Set<string>();
+      // Prefer items extracted as shorts (shortsLockupViewModel) first; fall
+      // back to short-duration regular videos.
+      for (const s of more.shorts) {
+        if (shorts.length >= 10) break;
+        if (!shortsSeen.has(s.id)) {
+          shortsSeen.add(s.id);
+          shorts.push(s);
+        }
+      }
+      if (shorts.length < 10) {
+        for (const v of more.videos) {
+          if (shorts.length >= 10) break;
+          if (shortsSeen.has(v.id)) continue;
+          // Duration string like "0:42" → seconds; keep <= 60s.
+          const m = /^(\d+):(\d{2})$/.exec(v.duration);
+          if (!m) continue;
+          const secs = parseInt(m[1]!, 10) * 60 + parseInt(m[2]!, 10);
+          if (secs > 0 && secs <= 60) {
+            shortsSeen.add(v.id);
+            shorts.push({
+              id: v.id,
+              title: v.title,
+              thumbnail: v.thumbnail,
+              views: v.views,
+              channel: v.channel,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[innertube] anon-shorts search failed: ${(err as Error).message}`);
     }
   }
 
@@ -829,6 +884,17 @@ export interface DynamicResult {
   reason?: string;
 }
 
+// Rotating pool of secondary queries used to paginate the synthetic anon feed.
+// Each scroll page picks a fresh slice so the feed feels "endless" without
+// repeating the home-feed seeds.
+const ANON_MORE_QUERIES = [
+  'documentary', 'review', 'cooking recipe', 'fitness workout',
+  'travel vlog', 'live performance', 'history explained', 'tech deep dive',
+  'art tutorial', 'animation short', 'podcast clip', 'standup comedy',
+  'space exploration', 'nature footage', 'sports highlights', 'film analysis',
+];
+let anonMoreCursor = 0;
+
 // Fetches the next page of videos given a continuation token. Used by the
 // VideoGrid's IntersectionObserver for infinite scroll.
 export async function getMoreVideos(token: string): Promise<DynamicResult> {
@@ -837,6 +903,31 @@ export async function getMoreVideos(token: string): Promise<DynamicResult> {
     return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
   }
   const innertube = session.instance;
+  // Anon synthetic-feed pagination: run two queries from the rotating pool
+  // and return their combined videos. Always returns a fresh `anon:` token
+  // so the scroll handler keeps requesting more.
+  if (token.startsWith('anon:')) {
+    const out: Video[] = [];
+    const seen = new Set<string>();
+    for (let i = 0; i < 2; i++) {
+      const q = ANON_MORE_QUERIES[anonMoreCursor % ANON_MORE_QUERIES.length] ?? 'popular';
+      anonMoreCursor++;
+      try {
+        const resp = await innertube.actions.execute('/search', { query: q });
+        const raw = (resp as { data?: unknown })?.data ?? resp;
+        const parsed = extractLockupVideos(raw);
+        for (const v of parsed.videos) {
+          if (!seen.has(v.id) && out.length < 24) {
+            seen.add(v.id);
+            out.push(v);
+          }
+        }
+      } catch (err) {
+        console.warn(`[innertube] anon-more search "${q}" failed: ${(err as Error).message}`);
+      }
+    }
+    return { kind: 'ok', videos: out, shorts: [], continuation: 'anon:' };
+  }
   try {
     const resp = await innertube.actions.execute('/browse', { token });
     const raw = (resp as { data?: unknown })?.data ?? resp;

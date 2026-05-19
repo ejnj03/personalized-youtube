@@ -84,7 +84,7 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 export function ChatPanel({ pageSlug }: { pageSlug: string }) {
-  const { config, dispatch, replace, watchingId, watchingTitle } = usePageStore();
+  const { config, dispatch, replace, watchingId, watchingTitle, youtubeMode } = usePageStore();
   const [open, setOpen] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -249,14 +249,28 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
   async function fetchMoreContent(input: { category: string; count?: number; style?: string }) {
     setGeneratingCategory(input.category);
     try {
-      const res = await fetch('/api/generate-content', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: pageSlug, ...input }),
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as { videos?: Video[] };
-      const newVideos = data.videos ?? [];
+      // YouTube mode: hit real-YouTube search so the appended videos have
+      // real 11-char IDs and play in the embed. Haiku-generated videos use
+      // placeholder ids that the embed can't resolve.
+      let newVideos: Video[] = [];
+      if (youtubeMode) {
+        const query = input.style ? `${input.category} ${input.style}` : input.category;
+        const limit = input.count ?? 8;
+        const res = await fetch(`/api/yt/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = (await res.json()) as { ok?: boolean; videos?: Video[] };
+          newVideos = (data.videos ?? []).slice(0, limit);
+        }
+      } else {
+        const res = await fetch('/api/generate-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: pageSlug, ...input }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { videos?: Video[] };
+        newVideos = data.videos ?? [];
+      }
       if (newVideos.length === 0) return;
 
       const grid = config.sections.find((s) => s.type === 'VideoGrid');
