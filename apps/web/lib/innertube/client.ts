@@ -768,23 +768,40 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
   // the personalized home feed to authenticated clients. Synthesize a home
   // feed from a handful of popular searches so the deployed (no-cookie) demo
   // shows real YouTube videos instead of falling back to the mock catalog.
+  // Each search query becomes a chip; the chip label is sent back as the
+  // search query when the visitor clicks it (`params` carries the literal
+  // query string, prefixed with 'q:' to disambiguate from real chip tokens).
+  const anonChips: YtChip[] = [];
   if (videos.length === 0 && !session.authenticated) {
-    const queries = ['popular this week', 'music', 'tutorial', 'gaming highlights', 'news today'];
+    const queries: Array<{ label: string; query: string }> = [
+      { label: 'Popular',   query: 'popular this week' },
+      { label: 'Music',     query: 'music' },
+      { label: 'Tutorials', query: 'tutorial' },
+      { label: 'Gaming',    query: 'gaming highlights' },
+      { label: 'News',      query: 'news today' },
+      { label: 'Comedy',    query: 'comedy sketch' },
+      { label: 'Science',   query: 'science explained' },
+    ];
     const seen = new Set<string>();
-    for (const q of queries) {
+    for (const { label, query } of queries) {
       try {
-        const resp = await innertube.actions.execute('/search', { query: q });
+        const resp = await innertube.actions.execute('/search', { query });
         const raw2 = (resp as { data?: unknown })?.data ?? resp;
         const more = extractLockupVideos(raw2);
+        let added = 0;
         for (const v of more.videos) {
           if (!seen.has(v.id)) {
             seen.add(v.id);
             videos.push(v);
+            added++;
           }
+        }
+        if (added > 0) {
+          anonChips.push({ text: label, params: `q:${query}`, isSelected: false });
         }
         if (videos.length >= 40) break;
       } catch (err) {
-        console.warn(`[innertube] anon-feed search "${q}" failed: ${(err as Error).message}`);
+        console.warn(`[innertube] anon-feed search "${query}" failed: ${(err as Error).message}`);
       }
     }
   }
@@ -796,8 +813,9 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
     };
   }
 
-  console.log(`[innertube] home feed: ${videos.length} videos, ${shorts.length} shorts, ${initial.chips.length} chips (auth=${session.authenticated})`);
-  return { kind: 'ok', videos, shorts, continuation: token ?? null, chips: initial.chips };
+  const chips = initial.chips.length > 0 ? initial.chips : anonChips;
+  console.log(`[innertube] home feed: ${videos.length} videos, ${shorts.length} shorts, ${chips.length} chips (auth=${session.authenticated})`);
+  return { kind: 'ok', videos, shorts, continuation: token ?? null, chips };
 }
 
 // ---------- Dynamic API: continuation, browse-by-id, search ----------
@@ -844,6 +862,19 @@ export async function getBrowse(browseId: string, params?: string): Promise<Dyna
     return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: 'innertube session unavailable' };
   }
   const innertube = session.instance;
+  // Synthetic anon chips carry their query as `q:<query>`. Route them to
+  // search instead of /browse so the chip click refetches that category.
+  if (typeof params === 'string' && params.startsWith('q:')) {
+    const query = params.slice(2);
+    try {
+      const resp = await innertube.actions.execute('/search', { query });
+      const raw = (resp as { data?: unknown })?.data ?? resp;
+      const out = extractLockupVideos(raw);
+      return { kind: 'ok', videos: out.videos, shorts: out.shorts, continuation: out.continuation };
+    } catch (err) {
+      return { kind: 'unavailable', videos: [], shorts: [], continuation: null, reason: (err as Error).message };
+    }
+  }
   try {
     const body: Record<string, unknown> = {};
     if (typeof params === 'string' && params.length > 0) {

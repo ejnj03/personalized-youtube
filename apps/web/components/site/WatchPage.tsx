@@ -189,7 +189,7 @@ export function WatchPage() {
 
   if (!watchingId) return null;
 
-  const embedSrc = `https://www.youtube.com/embed/${encodeURIComponent(watchingId)}?autoplay=1&rel=0`;
+  const embedSrc = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(watchingId)}?autoplay=1&rel=0`;
 
   return (
     <div className="px-6 py-4">
