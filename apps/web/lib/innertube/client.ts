@@ -723,12 +723,9 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
   if (session === null) {
     return { kind: 'unavailable', reason: 'innertube session unavailable' };
   }
-  if (!session.authenticated) {
-    // Personalized home feed needs login — anonymous /browse FEwhat_to_watch
-    // returns a generic trending feed, not "your" feed. Bail so the adapter
-    // selector falls back to the mock catalog on Vercel.
-    return { kind: 'unavailable', reason: 'home feed requires authentication' };
-  }
+  // Anonymous mode still works for /browse FEwhat_to_watch — YouTube serves
+  // a generic trending/popular feed to logged-out clients. Not personalized,
+  // but real YouTube videos with real IDs, which is what the demo needs.
   const innertube = session.instance;
 
   let raw: unknown;
