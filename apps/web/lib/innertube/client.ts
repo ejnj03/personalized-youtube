@@ -764,6 +764,31 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
     }
   }
 
+  // Anonymous /browse FEwhat_to_watch returns 0 videos — YouTube only serves
+  // the personalized home feed to authenticated clients. Synthesize a home
+  // feed from a handful of popular searches so the deployed (no-cookie) demo
+  // shows real YouTube videos instead of falling back to the mock catalog.
+  if (videos.length === 0 && !session.authenticated) {
+    const queries = ['popular this week', 'music', 'tutorial', 'gaming highlights', 'news today'];
+    const seen = new Set<string>();
+    for (const q of queries) {
+      try {
+        const resp = await innertube.actions.execute('/search', { query: q });
+        const raw2 = (resp as { data?: unknown })?.data ?? resp;
+        const more = extractLockupVideos(raw2);
+        for (const v of more.videos) {
+          if (!seen.has(v.id)) {
+            seen.add(v.id);
+            videos.push(v);
+          }
+        }
+        if (videos.length >= 40) break;
+      } catch (err) {
+        console.warn(`[innertube] anon-feed search "${q}" failed: ${(err as Error).message}`);
+      }
+    }
+  }
+
   if (videos.length === 0) {
     return {
       kind: 'unavailable',
@@ -771,7 +796,7 @@ async function fetchHomeFeedUncached(): Promise<HomeFeedResult> {
     };
   }
 
-  console.log(`[innertube] home feed: ${videos.length} videos, ${shorts.length} shorts, ${initial.chips.length} chips`);
+  console.log(`[innertube] home feed: ${videos.length} videos, ${shorts.length} shorts, ${initial.chips.length} chips (auth=${session.authenticated})`);
   return { kind: 'ok', videos, shorts, continuation: token ?? null, chips: initial.chips };
 }
 
