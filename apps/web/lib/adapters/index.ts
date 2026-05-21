@@ -4,7 +4,7 @@ import { getFeed as getYoutubeFeed } from './youtube';
 import type { YtChip } from '../innertube/client';
 
 export interface FeedAdapter {
-  getFeed(): Promise<{ videos: Video[]; categories: string[]; shorts?: Short[]; chips?: YtChip[] }>;
+  getFeed(): Promise<{ videos: Video[]; categories: string[]; shorts?: Short[]; chips?: YtChip[]; continuation?: string | null }>;
   requestMoreContent?(category: string, count: number, style?: string): Promise<Video[]>;
 }
 
@@ -32,7 +32,7 @@ export function getAdapter(): FeedAdapter {
         console.warn(`[adapters] youtube fell back to mock: ${result.reason}`);
         return mockAdapter.getFeed();
       }
-      return { videos: result.videos, categories: [], shorts: result.shorts, chips: result.chips };
+      return { videos: result.videos, categories: [], shorts: result.shorts, chips: result.chips, continuation: result.continuation };
     },
     requestMoreContent: mockAdapter.requestMoreContent?.bind(mockAdapter),
   };
