@@ -144,11 +144,18 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
     return () => window.removeEventListener('keydown', onKeydown);
   }, [open, minimized]);
 
-  async function send(text: string) {
-    if (!text.trim() || isStreaming) return;
+  async function send(text: string) { //STEP 1-2: Update state accordingly
+    //guard if previous request is still streaming or user stripped text is empty
+    if (!text.trim() || isStreaming) return; 
+
+    //state update happens after send() completes (on re-render)
+    //queue append user message to current message array and update state variable
     const next = [...messages, { role: 'user' as const, content: text }];
     setMessages(next);
+    
+    //clear user input area
     setInput('');
+    //queue status update to streaming (agent message in flight)
     setIsStreaming(true);
 
     // Look up the watching video's thumbnail + channel so the API can pass
@@ -176,14 +183,16 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
     }
 
     try {
-      const res = await fetch('/api/chat', {
+      //(next.js file based routing- Next.js looks for file under the /app directory (/api/chat) which is route.ts)
+      const res = await fetch('/api/chat', { //STEP 3: Post to server
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pageSlug,
-          message: text,
-          history: messages,
-          watching: watchingId
+          //Prop that is passed into ChatPanel component- identifies the current website/page that is being personalized
+          pageSlug, //currently hard-coded to 'youtube-clone' - for expansion to i.e., 'slack-clone' 'amazon-clone'
+          message: text, // the message that was just submitted
+          history: messages, // array of {role, content} objects for every prior turn
+          watching: watchingId //youtube video+title+thumbnail+channel if current page is showing a video
             ? { id: watchingId, title: watchingTitle ?? '', thumbnail: watchingThumbnail, channel: watchingChannel }
             : null,
         }),
@@ -560,11 +569,11 @@ export function ChatPanel({ pageSlug }: { pageSlug: string }) {
                 ))}
               </div>
             )}
-
-            <form
+            <form //STEP 1-1: submit the user's message string
               onSubmit={(e) => {
                 e.preventDefault();
-                send(input);
+                console.log('STEP 1: submit user input: ', input)
+                send(input); //invokes send with input
               }}
               className="shrink-0 border-t border-[color:var(--border)] p-3"
             >
