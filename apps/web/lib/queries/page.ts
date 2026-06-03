@@ -108,10 +108,10 @@ export async function getRenderedPage(
   let ytContinuation: string | null = null;
   let ytChips: YtChipMeta[] = [];
 
-  // If SHOWCASE_FEED_SOURCE=youtube, pull live videos from the youtubei.js
-  // adapter and substitute them into the row sections + grid. Adapter falls
-  // back to mock if the cookies/network/parser fails.
-  const source = process.env.SHOWCASE_FEED_SOURCE ?? process.env.FEED_ADAPTER ?? 'mock';
+  // Pull live videos from the youtubei.js adapter (default source) and
+  // substitute them into the row sections + grid. If the adapter can't reach
+  // YouTube it returns an empty feed and the seeded base config is served as-is.
+  const source = process.env.SHOWCASE_FEED_SOURCE ?? process.env.FEED_ADAPTER ?? 'youtube';
   console.log('[page] feed source =', JSON.stringify(source), 'env=', process.env.SHOWCASE_FEED_SOURCE);
   if (source === 'youtube') {
     try {
@@ -125,7 +125,7 @@ export async function getRenderedPage(
         }
       }
     } catch (err) {
-      console.warn('[page] youtube adapter threw; using db catalog', err);
+      console.warn('[page] youtube adapter threw; serving seeded base config', err);
     }
   } else {
     const { data: generated } = await db
