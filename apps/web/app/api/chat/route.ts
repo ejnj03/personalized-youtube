@@ -46,17 +46,36 @@ async function fetchAsImageBlock(
   }
 }
 
-export async function POST(req: NextRequest) {
+
+export async function POST(req: NextRequest) { //next wrapper around standard Request object
+  //STEP 3: 
+  //resolve user
+
+  // First time user lands on / and sees no visitor_id cookie, it generates uuid and sets as HttpOnly cookie
+  //every subsequent request from the browser carries the cookie
+  //db scopes preferences (configuration alterations through chat) through the id
+
+  //parse the request body 
   const { pageSlug, message, history = [], watching = null } = (await req.json()) as ChatRequest;
+  //(function that gives read access to incoming request's cookies)
   const cookieStore = await cookies();
+  //looks up cookie named 'visitor_id' -> returns {name, value}
+  //resolves to string "a1b2c3..." or undefined
   const visitorId = cookieStore.get('visitor_id')?.value;
   if (!visitorId) {
     return new Response(JSON.stringify({ error: 'no visitor cookie' }), { status: 400 });
   }
-
+  //get the configuration of the page (current state) from it
   const config = await getRenderedConfig({ slug: pageSlug, visitorId });
+
+  //(part of step 5)
+  //build system prompt
+  // sys = { role: ..., schemaCatalog: ..., editingRules: ... } — each is a cacheable prompt block
   const sys = buildSystemBlocks();
 
+  //Step 4: build summary 
+  //Walks every section on the current page (i.e., VideoGrid, Shorts, TopBar, etc. and builds a lightweight description of each)
+  
   // Compact section summary — id + type + a 1-line summary of the most useful props.
   // Crucially: drop heavy fields like videos[] from the prompt. The LLM only needs ids
   // and types to call update_section; it does NOT need to see the catalog.
@@ -75,6 +94,11 @@ export async function POST(req: NextRequest) {
     return summary;
   });
 
+  console.log("STEP 4 (section summaries): ", sectionSummaries)
+
+  //STEP 5: Assemble payload from cached + updates
+
+  //string describing this user's current preference state
   const visitorState = buildVisitorState(
     {
       sections: sectionSummaries,
@@ -137,6 +161,7 @@ export async function POST(req: NextRequest) {
       let stopReason: string | null = null;
       let lastMessageId: string | undefined;
 
+      //STEP 5: construct request payload 
       const requestPayload = {
         model: MODEL_OPUS,
         max_tokens: 1024,
@@ -144,6 +169,7 @@ export async function POST(req: NextRequest) {
         tools: TOOL_DEFINITIONS,
         messages,
       };
+      console.log("STEP 5: ", requestPayload)
       send({ kind: 'debug_request', payload: requestPayload });
 
       try {
