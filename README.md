@@ -1,163 +1,138 @@
-# Showcase — Personalizable YouTube
+# Showcase — chat-driven personalization
 
-A YouTube-shaped homepage you can talk to. Type a prompt — *"make it feel like a quiet bookshop"*, *"only deep-dives I haven't watched"*, *"adapt the theme to whatever's playing"* — and the page restructures itself live. Preferences stick across reloads via a cookie-anonymous identity.
+> Talk to your UI. Type _"forest-green dark theme, hide shorts, bigger cards"_ and the page rewrites itself live — and **remembers** across reloads.
 
-Two run modes:
+This is a monorepo with one reusable product and two apps that prove it out:
 
-| Mode | What it shows | Setup |
-| --- | --- | --- |
-| **Mock** (default) | A curated 168-video catalog. Full personalization (theme, layout, filters, mood-board, ambient backgrounds, subtitle overlay, etc.) all work. | Anyone, ~3 minutes. |
-| **YouTube** (real) | *Your* logged-in YouTube feed — real recommendations, real chips, real search. The chat operates on top of it. | macOS + Chrome with YouTube login, ~5 minutes. |
+| | What it is | |
+|---|---|---|
+| 🧩 **[`@showcase/sdk`](packages/sdk/)** | The product. Drop chat-driven personalization into any React app — typed page model, Anthropic-powered chat panel, theming, persistence. | **[Docs →](packages/sdk/README.md)** |
+| ▶️ **[YouTube clone](apps/web/)** | A full Next.js host built on the SDK, running on **real** YouTube data. | [Run it ↓](#-run-the-youtube-clone) |
+| 🎧 **[Spotify clone](spotify-react-web-client/)** | A second host (CRA + Hono server) — proves the SDK isn't YouTube-shaped. **A fork** (see [attribution](#-attribution)). | [Run it ↓](#-run-the-spotify-clone) |
 
-The same chat-driven personalization layer wraps both — only the source of videos differs.
-
----
-
-## Prerequisites
-
-- **Node 20+** and **pnpm 9+** (`corepack enable && corepack prepare pnpm@9 --activate`)
-- An **Anthropic API key** ([console.anthropic.com](https://console.anthropic.com))
-- A **Supabase project** (free tier is fine — used for the visitor cookie + preference patches)
-- *(Mode 2 only)* **macOS** with **Chrome** installed and logged in to YouTube
+The two apps share **zero** personalization code — they just configure the SDK differently. That's the whole point: the SDK is the engine; the clones are showcases.
 
 ---
 
-## Setup (5 minutes)
+## 🧩 Start with the SDK
+
+If you're here to *use* the personalization engine, you barely need this repo — head straight to the package:
+
+- **[SDK overview & install](packages/sdk/README.md)**
+- **[Getting Started](packages/sdk/docs/getting-started.md)** — integrate into an existing app in ~5 steps
+- **[Theme](packages/sdk/docs/theme.md)** · **[Sections](packages/sdk/docs/sections.md)** · **[Persistence](packages/sdk/docs/persistence.md)** · **[Chat Panel](packages/sdk/docs/chat-panel.md)** · **[Server](packages/sdk/docs/server.md)** · **[Concepts](packages/sdk/docs/concepts.md)**
+
+The rest of this README is about running the two **reference apps** locally — the best way to see the SDK in action and to crib a real integration.
+
+## 📁 Repo layout
+
+```
+showcase/
+├── packages/
+│   ├── sdk/                 🧩 @showcase/sdk — the personalization engine (start here)
+│   └── shared/              Zod schemas the YouTube clone builds on (PageConfig, Theme, sections)
+├── apps/
+│   └── web/                 ▶️ YouTube clone — Next.js 15 host
+├── spotify-react-web-client/ 🎧 Spotify clone — CRA host + Hono chat/lyrics server
+└── supabase/migrations/     Shared Postgres schema (visitors, preferences, modes, chat turns)
+```
+
+> A reference integration to read end-to-end: the YouTube host is [`apps/web/lib/personalization.ts`](apps/web/lib/personalization.ts); the Spotify host is [`spotify-react-web-client/src/personalization/host.ts`](spotify-react-web-client/src/personalization/host.ts). Both are tiny.
+
+---
+
+## 🛠️ One-time setup
+
+**Prerequisites**
+
+- **Node 20+** and **pnpm 9+** — `corepack enable && corepack prepare pnpm@9 --activate`
+- An **[Anthropic API key](https://console.anthropic.com)**
+- A **[Supabase](https://supabase.com) project** (free tier) — stores the visitor cookie identity + preference patches + modes
+- *(Spotify clone)* a **[Spotify developer app](https://developer.spotify.com/dashboard)** for OAuth
+- *(YouTube clone, real-feed mode)* **macOS + Chrome** logged in to YouTube
+
+**Install & configure**
 
 ```bash
 git clone <this-repo> showcase
 cd showcase
 pnpm install
-cp .env.example .env
+cp .env.example .env        # both apps read this single root .env
 ```
 
-Open `.env` and fill in:
+Fill in `.env`:
 
 ```bash
+# Claude (both apps)
 ANTHROPIC_API_KEY=sk-ant-…
+
+# Supabase (both apps)
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=…
 SUPABASE_SERVICE_ROLE_KEY=…
+SUPABASE_ACCESS_TOKEN=…        # only needed to run migrations
 
-# leave commented for mock mode (the default).
-# uncomment to read videos from your real YouTube account:
-# SHOWCASE_FEED_SOURCE=youtube
+# Spotify OAuth (Spotify clone only)
+# SPOTIFY_CLIENT_ID=…   SPOTIFY_CLIENT_SECRET=…   (+ redirect URI in your Spotify dashboard)
 ```
 
-Then:
+Apply the database schema once:
 
 ```bash
-pnpm migrate    # applies the Supabase schema
-pnpm seed       # generates the 168-video mock catalog (calls Claude Haiku, ~$0.50, ~2 min)
-pnpm --filter @showcase/web dev
+pnpm migrate        # creates visitors / preferences / modes / chat_turns
 ```
 
-Open http://localhost:3000.
-
-> The first chat request takes ~3 seconds (system prompt fills the cache). Every subsequent request is fast — Anthropic prompt-caching is already wired with 4 cache breakpoints.
+> 💾 Persistence is **mode-aware** — every visitor can keep multiple named save-slots and switch between them. Details in **[SDK → Persistence](packages/sdk/docs/persistence.md)**.
 
 ---
 
-## Mode 2: real YouTube data
+## ▶️ Run the YouTube clone
 
-Once the app runs in mock mode, switch to your real YouTube feed:
-
-1. **Make sure Chrome is installed and logged in to YouTube.** (Brave / Edge / Firefox aren't supported yet — only Chrome on macOS.)
-2. Add `SHOWCASE_FEED_SOURCE=youtube` to `.env`.
-3. Restart the dev server.
-4. **First boot will trigger a macOS keychain prompt** — *"security wants to use the Chrome Safe Storage keychain item"*. Click **Always Allow**. After that the prompt is silent forever.
-5. Reload the page. You'll see your actual feed — your subscriptions, your recommended videos, your real category chips ("Music", "Podcasts", "K-Pop", or whatever YouTube shows you).
-
-If anything breaks — keychain denied, Chrome closed, profile path different — the app falls back to the mock catalog automatically. No crashes.
-
-### What works in YouTube mode
-
-- The home feed (your real recommendations, ~45 videos + 18 shorts on first load)
-- Category chips (each one fires a real `youtubei` filter; "Podcasts" gives you podcasts, "Music" gives you music)
-- Search (real YouTube search)
-- Click a video → in-app embed player with up-next column
-- Infinite scroll (continuation tokens on the home grid)
-- All the personalization (chat-driven theme/layout/filter changes apply to the real videos)
-- Multimodal: when you're on the watch page, the chat can *see* the playing video's thumbnail and adapt the page's whole vibe to it
-
----
-
-## Try these prompts
-
-Aesthetic:
-- *use a forest-green dark theme with bigger text*
-- *make it feel like a quiet bookshop — cream paper, serif type, two-column shelves*
-- *make YouTube feel like a 1970s record store*
-- *snowfall on the homepage when it's late* (any time, really)
-- *make the page breathe with what I'm watching* (on the watch view)
-
-Behavioral:
-- *show me more chill jazz, less bangers*
-- *only deep-dives I haven't watched, deep-dives on top*
-- *hide videos from any channel under 100k subscribers*
-- *group my feed by mood — focus, wind down, sharpen*
-- *Korean subtitles with hover dictionary* (on the watch view)
-
-Layout:
-- *compact mode, 5 columns*
-- *show videos as a list*
-- *hide the shorts row*
-- *move recommendations to the top*
-
-Each prompt produces a coherent set of changes — the chat composes primitives (`update_theme`, `set_filter`, `add_section`, etc.) rather than running a fixed scenario list. Make up your own.
-
----
-
-## Project layout
-
-```
-showcase/
-├── apps/web/              Next.js 15 + React 19 app — the actual showcase
-│   ├── app/               Routes: /, /api/chat, /api/yt/*, /api/page, /api/patch, /api/reset
-│   ├── components/        UI: site shell, chat panel, section templates
-│   └── lib/               innertube/ (YouTube data), prompts/ (Claude system), adapters/, queries/
-├── packages/shared/       Zod schemas (single source of truth: PageConfig, Section, Theme, Video)
-├── apps/desktop/          [SUPERSEDED] Earlier Electron+CDP path; replaced by lib/innertube/.
-├── supabase/migrations/   Append-only SQL
-├── scripts/               One-shots: seed, migrate, clean-thumbs, demo-smoke
-└── docs/                  ARCHITECTURE.md, decisions log, research notes
+```bash
+pnpm --filter @showcase/web dev      # http://localhost:3000
 ```
 
-## Onboarding new contributors
+By default it reads **your real YouTube feed** from Chrome's cookies (macOS):
 
-1. Read [`docs/ONBOARDING.md`](docs/ONBOARDING.md) **first** — it's a 30-minute walk-through that gets the app running, makes one tiny visible change, and leaves them with a working mental model. Designed for people who don't know terms like "Server Component" yet.
-2. Once you're past that, [`docs/architecture.md`](docs/architecture.md) is the deep dive on how the personalization actually works — how a chat message becomes a visible page change.
-3. [`docs/GLOSSARY.md`](docs/GLOSSARY.md) is a reference for any term you hit and don't recognize.
-4. [`docs/decisions.md`](docs/decisions.md) is an append-only log of *why* we made certain calls — open it when "why is it like this?" comes up.
+- First boot triggers a one-time macOS keychain prompt — _"security wants to use the Chrome Safe Storage keychain item"_. Click **Always Allow**; it's silent forever after.
+- You'll see your actual recommendations, subscriptions, category chips, and search. Click a video for the in-app player; the Library tab shows your real playlists.
+- **No Chrome / not on macOS / not logged in?** It falls back to an **anonymous** (generic) feed automatically — the whole personalization layer still works, just on un-personalized videos.
 
----
+Then open the chat panel and try _"dark theme"_, _"make it feel like a quiet bookshop"_, _"hide the shorts row"_, _"only deep-dives I haven't watched"_.
 
-## Troubleshooting
+## 🎧 Run the Spotify clone
 
-**Page shows mock videos but I set `SHOWCASE_FEED_SOURCE=youtube`** — restart the dev server. Next.js reads env vars at process start.
+> 🍴 **This app is a fork** of [francoborrelli/spotify-react-web-client](https://github.com/francoborrelli/spotify-react-web-client) (MIT). We added the `@showcase/sdk` personalization layer (chat panel, theme, the Hono chat/lyrics server) on top of Franco's Spotify client. See [Attribution](#-attribution).
 
-**Chrome cookie keychain prompt won't go away** — click *Always Allow* (not just *Allow*); the next boot will be silent.
+It's a client + a small server (chat, lyrics, music-video lookup). Run both:
 
-**`security find-generic-password` errors** — Chrome may not be installed at the default path. Set `CHROME_COOKIE_PATH=/path/to/Chrome/Default/Cookies` in `.env`.
+```bash
+pnpm --filter spotify-client server     # Hono API on http://localhost:8787
+pnpm --filter spotify-client start      # CRA app on http://localhost:3001
+```
 
-**Empty feed after switching to YouTube mode** — make sure you're actually logged in to YouTube in Chrome. Open `chrome://settings/cookies` to confirm `youtube.com` cookies exist.
-
-**Chat says it changed something but the page doesn't update** — hard-reload (Cmd-Shift-R). `lib/` server-side changes don't HMR cleanly.
-
-**Cookies expire** — re-login to YouTube in Chrome and reload.
-
-**Linux / Windows** — not supported yet. The cookie extractor is macOS-only; Chrome on other OSes uses different keychain APIs (libsecret on Linux, DPAPI on Windows). Adding either is a self-contained ~50-line change in `apps/web/lib/innertube/chrome-cookies.ts`.
+Log in with Spotify (Web Playback SDK handles playback), then personalize the same way — _"forest green theme"_, _"bigger now-playing"_. Lyrics come from [LRClib](https://lrclib.net); the chat panel is the exact same SDK component the YouTube clone uses.
 
 ---
 
-## What's deliberately not in v0
+## ☁️ Deploying
 
-- Replays / fixtures for chat regression — the system prompt is logged in `logs/anthropic.jsonl` so a replay harness is trivial to add when needed.
-- Vercel deploy of the YouTube-mode path — won't work without your Chrome cookies. Mock mode deploys cleanly though.
-- Multi-user accounts — the visitor identity is a `httpOnly` cookie, deliberately. Cross-device personalization would need a proper auth swap.
+The apps run cleanly in the cloud in **anonymous / showcase mode** (full chat personalization + Supabase persistence). Serving a *logged-in* real account from a cloud host is possible but inherits cookie-expiry and YouTube's datacenter-IP anti-bot behavior — the real-data path is happiest running locally. See **[SDK → Server](packages/sdk/docs/server.md)** for the chat-route wiring either way.
+
+## 🧱 Stack
+
+**SDK** — TypeScript · [Zod](https://zod.dev) · [Anthropic SDK](https://docs.anthropic.com/en/api/overview) (Claude Opus for chat) · React 18/19 peer.
+**YouTube clone** — Next.js 15 (App Router) · React 19 · Tailwind · `youtubei.js` (real data via Chrome cookies) · Supabase.
+**Spotify clone** — CRA · Hono server · Spotify Web Playback SDK · LRClib · Supabase.
+
+## 📜 Attribution
+
+The **Spotify clone** (`spotify-react-web-client/`) is a **fork** of:
+
+> **[francoborrelli/spotify-react-web-client](https://github.com/francoborrelli/spotify-react-web-client)** — © Franco Martín Borrelli, licensed **MIT**.
+
+We forked Franco's Spotify web client and layered the `@showcase/sdk` personalization engine on top (the chat panel, theming, and the Hono chat/lyrics server under `spotify-react-web-client/server/`). The upstream MIT license is retained in [`spotify-react-web-client/LICENSE`](spotify-react-web-client/LICENSE); please keep it. The **YouTube clone** and **`@showcase/sdk`** are original to this repository.
 
 ---
 
-## Stack
-
-Next.js 15 (App Router) · React 19 · Tailwind 3.4 · Supabase · Anthropic SDK (`claude-opus-4-7`, `claude-haiku-4-5-20251001` for catalog gen) · `youtubei.js` for YouTube data · `better-sqlite3` for the Chrome cookie reader.
+<sub>The personalization engine lives in [`packages/sdk`](packages/sdk/) — everything else is a demonstration of it.</sub>

@@ -7,7 +7,7 @@
  */
 
 const BASE = process.env.SHOWCASE_BASE ?? 'http://localhost:3000';
-const SLUG = 'youtube-clone';
+const SLUG = 'streaming-platform';
 
 const PROMPTS: Array<{ label: string; text: string; expectAtLeastOneOf: string[] }> = [
   {

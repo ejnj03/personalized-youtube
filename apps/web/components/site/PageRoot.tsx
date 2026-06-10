@@ -44,14 +44,10 @@ function useUrlSync() {
   }, [setWatching, exitSearch]);
 }
 
+// Keys mirror the SDK font catalog (defineFonts → theme.fontFamily). Stale
+// 'sans'/'serif'/'mono'/'rounded' aliases were dropped; any old saved value
+// falls through to the `?? FONT_CLASS.inter` default below.
 const FONT_CLASS = {
-  // Legacy keys — kept because the schema still accepts them.
-  // They point at the bridge Tailwind utilities defined in tailwind.config.ts.
-  sans: 'font-sans',
-  serif: 'font-serif',
-  mono: 'font-mono',
-  rounded: 'font-rounded',
-
   inter: 'font-inter',
   'space-grotesk': 'font-space-grotesk',
   bricolage: 'font-bricolage',
@@ -91,12 +87,19 @@ export function PageRoot({ pageSlug }: { pageSlug: string }) {
     };
   }, [config.theme.fontScale]);
 
-
+  // The 8 palette tokens (--bg, --accent, …) are published to <html> by the
+  // SDK's <PersonalizationRoot> from config.theme.tokens. Here we only override
+  // --bg/--surface when a custom background.from is set, so the chrome
+  // (TopBar/Sidebar) follows a chosen page background. Distinct vars exist so
+  // themes CAN diverge them, but the default expectation is "bg = everywhere."
   const themeStyle: React.CSSProperties = {
-    ['--accent' as string]: config.theme.accent,
+    ...(bg.from && {
+      ['--bg' as string]: bg.from,
+      ['--surface' as string]: bg.from,
+    }),
   };
 
-  // Custom backgrounds: gradient overrides the default surface; solid relies on bg-bg.
+  // Custom backgrounds: every kind branches off `bg.from`.
   if (bg.kind === 'gradient' && bg.from && bg.to) {
     themeStyle.background = `linear-gradient(${bg.angle}deg, ${bg.from}, ${bg.to})`;
   }
@@ -107,19 +110,26 @@ export function PageRoot({ pageSlug }: { pageSlug: string }) {
     const paper = bg.from ?? '#f3eee0';
     themeStyle.background = paper;
   }
+  // Solid colors — paint the page surface directly.
+  // Without this branch, kind:'solid' patches arrive but produce no visible
+  // change because nothing else wires bg.from into the CSS.
+  if (bg.kind === 'solid' && bg.from) {
+    themeStyle.background = bg.from;
+  }
 
-  const fontClass = FONT_CLASS[config.theme.fontFamily] ?? FONT_CLASS.sans;
+  // fontFamily is typed `string` (SDK builds the enum from catalog keys), so
+  // cast to index FONT_CLASS; the `?? FONT_CLASS.inter` covers any unmapped key.
+  const fontClass = FONT_CLASS[config.theme.fontFamily as keyof typeof FONT_CLASS] ?? FONT_CLASS.inter;
 
   const isGradient = bg.kind === 'gradient' && !!bg.from && !!bg.to;
   const isPaper = bg.kind === 'paper';
-  const orbColor = config.theme.accent;
-  const orbColor2 = bg.to ?? config.theme.accent;
+  const orbColor = config.theme.tokens.accent;
+  const orbColor2 = bg.to ?? config.theme.tokens.accent;
   const chromeDim = config.theme.chromeDim ?? 0;
   const grain = config.theme.grain ?? 0;
 
   return (
     <div
-      data-theme={config.theme.mode}
       data-bg={isGradient ? 'gradient' : isPaper ? 'paper' : 'solid'}
       style={
         chromeDim > 0

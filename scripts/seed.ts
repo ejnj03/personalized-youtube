@@ -1,5 +1,5 @@
 /**
- * Seed script — inserts the base PageConfig row for the youtube-clone site.
+ * Seed script — inserts the base PageConfig row for the streaming-platform site.
  * Idempotent: re-running upserts.
  *
  * The 300-video mock catalog this script used to generate has been removed —
@@ -12,17 +12,19 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { setSupabaseBaseConfig } from '@showcase/sdk/supabase';
 import { PageConfigSchema, type PageConfig } from '@showcase/shared';
 
-const SITE_SLUG = 'youtube-clone';
+const SITE_SLUG = 'streaming-platform';
 
 function makeBaseConfig(): PageConfig {
   const config: PageConfig = {
-    id: 'youtube-clone',
+    id: 'streaming-platform',
     slug: SITE_SLUG,
     theme: {
-      mode: 'light',
-      accent: '#FF0000',
+      // Palette comes from ThemeSchema's defineTokens defaults — base config
+      // omits tokens and PageConfigSchema.parse() fills them on load. (Legacy
+      // mode/accent removed; the palette now lives in theme.tokens.)
       fontScale: '1',
       radius: 'md',
       videoCardDefaults: {
@@ -65,6 +67,14 @@ function makeBaseConfig(): PageConfig {
         },
       },
       {
+        id: 'shortsRow',
+        type: 'ShortsRow',
+        props: {
+          headline: 'Shorts',
+          shorts: [],
+        },
+      },
+      {
         id: 'videoGrid',
         type: 'VideoGrid',
         props: { columns: 4, density: 'cozy', videos: [] },
@@ -85,11 +95,15 @@ async function main() {
   const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
   const baseConfig = makeBaseConfig();
-  await db.from('sites').upsert(
-    { slug: SITE_SLUG, base_config: baseConfig, updated_at: new Date().toISOString() },
-    { onConflict: 'slug' },
-  );
-  console.log(`Upserted site row for slug=${SITE_SLUG} (empty feed; videos served by the YouTube adapter)`);
+  await setSupabaseBaseConfig(db, SITE_SLUG, baseConfig);
+
+  const { data: check, error: checkErr } = await db
+    .from('sites')
+    .select('id, slug')
+    .eq('slug', SITE_SLUG)
+    .single();
+  if (checkErr || !check) throw new Error(`Read-back failed: ${checkErr?.message ?? 'row not found'}`);
+  console.log(`Upserted + verified site row id=${check.id} slug=${check.slug} on ${supabaseUrl}`);
 }
 
 main().catch((e) => {

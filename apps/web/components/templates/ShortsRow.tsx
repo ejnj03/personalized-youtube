@@ -13,7 +13,7 @@ function formatViews(n: number): string {
 function ShortCard({ id, title, thumbnail, views }: { id: string; title: string; thumbnail: string; views: number }) {
   const [hidden, setHidden] = useState(false);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  const { setWatching, youtubeMode } = usePageStore();
+  const { setWatching } = usePageStore();
   useEffect(() => {
     const img = imgRef.current;
     if (img && img.complete && img.naturalWidth === 0) setHidden(true);
@@ -26,7 +26,6 @@ function ShortCard({ id, title, thumbnail, views }: { id: string; title: string;
       rel="noopener noreferrer"
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-        if (!youtubeMode) return;
         e.preventDefault();
         setWatching(id, title);
       }}

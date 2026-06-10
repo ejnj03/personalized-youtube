@@ -1,5 +1,5 @@
-// Scenario data, mock videos, scripted patches & chat scripts.
-// Ported verbatim from /tmp/design-extract/personalization-agent/project/data.jsx.
+// Scenario data: sample videos, scripted patches & chat scripts for the
+// /scenarios demo page.
 
 export type Surface = 'Home' | 'Watch';
 export type ScenarioKind = 'aesthetic' | 'utility';
@@ -303,7 +303,7 @@ export const SCENARIOS: Scenario[] = [
     prompt: 'Make YouTube feel like a quiet independent bookshop. Cream paper, serif type, no view counts. Two-column shelves.',
     chat: [
       { who: 'agent', text: 'Switching to a paper-textured cream background, Source Serif for body type, and a 2-column "shelves" layout. Hiding view counts and posted-ago since those are the loudest pieces of metadata.' },
-      { who: 'tool', name: 'update_theme', args: { mode: 'light', fontFamily: 'serif', radius: 'sm', background: { kind: 'paper', from: '#f3eee0' }, videoCardDefaults: { showViewCount: false, showPostedAgo: false } } },
+      { who: 'tool', name: 'update_theme', args: { mode: 'light', fontFamily: 'serif', radius: 'sm', background: { kind: 'paper', from: '#f3eee0' }, cardOverrides: { showStats: false, showTimestamp: false } } },
       { who: 'tool', name: 'update_section', args: { sectionId: 'videogrid', patch: { layout: 'shelves', columns: 2 } } },
       { who: 'tool', name: 'update_section', args: { sectionId: 'chips', patch: { visible: false } } },
       { who: 'agent', text: 'I left the search bar and sidebar functional but desaturated. The thumbnails are CSS-filtered to 25% saturation so they read as illustrations, not posters.' },

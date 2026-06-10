@@ -44,7 +44,7 @@ export const EDITING_RULES = `## Editing rules
          { query: 'morning lo-fi playlist', topN: 8 },
          { query: 'morning ambient playlist', topN: 8 }
        ],
-       schedule: { activeHoursLocal: [5, 12] }
+       schedule: { start: "05:00", end: "12:00" }
      } })
      set_filter({ minSubscriberCount: 25000, excludeTitleMatches: ['/SHOCKING|YOU WON\\'T BELIEVE|TRY NOT TO/i'] })
 
@@ -58,7 +58,7 @@ export const EDITING_RULES = `## Editing rules
          { query: 'morning bossa nova playlist', topN: 8 },
          { query: 'morning jazz piano playlist', topN: 8 }
        ],
-       schedule: { activeHoursLocal: [5, 12] }
+       schedule: { start: "05:00", end: "12:00" }
      } })
      set_filter({ minSubscriberCount: 25000 })
 
@@ -70,7 +70,7 @@ export const EDITING_RULES = `## Editing rules
          { query: 'morning lo-fi playlist', topN: 8 },
          { query: 'morning bossa nova playlist', topN: 8 }
        ],
-       schedule: { activeHoursLocal: [5, 12] }
+       schedule: { start: "05:00", end: "12:00" }
      } })
      set_filter({ minSubscriberCount: 100000, excludeTitleMatches: ['/SHOCKING|YOU WON\\'T BELIEVE|TRY NOT TO/i'] })
 
@@ -99,7 +99,7 @@ Treat these as proof of how to compose, NOT a fixed set. A new vibe like "Berlin
 ## Few-shot examples
 
 Visitor: "make thumbnails bigger and square"
-You: update_theme({ videoCardDefaults: { aspectRatio: '1:1', thumbnailScale: 1.4 } })
+You: update_theme({ cardOverrides: { aspect: '1:1', coverScale: 1.4 } })
 
 Visitor: "show me more chill jazz, less bangers"
 You: set_filter({ requireTags: ['jazz', 'chill'], exclude: ['high-energy', 'hype'] })
@@ -111,8 +111,8 @@ You: set_filter({ blockChannels: ['MrBeast'] })
 Visitor: "use a forest green dark theme"
 You: update_theme({ mode: 'dark', accent: '#22C55E' })
 
-Visitor: "show creator names bigger than titles"
-You: update_theme({ videoCardDefaults: { channelNameWeight: 700, titleWeight: 500 } })
+Visitor: "show as square image-only cards"
+You: update_theme({ cardPreset: 'square_card' })
 
 Visitor: "hide the shorts row"
 You: remove_section({ sectionId: 'shortsRow' })  (read the actual id from the snapshot)
@@ -172,13 +172,13 @@ Visitor: "use a sunset gradient background"
 You: update_theme({ background: { kind: 'gradient', from: '#FFEDD5', to: '#FECACA', angle: 160 } })
 
 Visitor: "show videos as a list" / "horizontal cards"
-You: update_theme({ videoCardDefaults: { cardLayout: 'horizontal' } })
+You: update_theme({ cardOverrides: { orientation: 'horizontal' } })
 
 Visitor: "back to grid view"
-You: update_theme({ videoCardDefaults: { cardLayout: 'vertical' } })
+You: update_theme({ cardOverrides: { orientation: 'vertical' } })
 
 Visitor: "make cards zoom on hover"
-You: update_theme({ videoCardDefaults: { hoverEffect: 'zoom' } })
+You: update_theme({ cardOverrides: { hoverEffect: 'zoom' } })
 
 ## Generalizable scenario primitives
 
@@ -202,10 +202,10 @@ You: remove_section({ sectionId: 'videoGrid' })
 Visitor: "decompress mode — only chill stuff, dim the bright thumbnails"
 You: remove_section({ sectionId: 'videoGrid' })
 + add_section({ sectionType: 'MoodBoard', position: { after: 'categoryChips' }, props: { moods: [{id:'decompress',label:'Decompress',emoji:'◌',description:'Soft and slow.',tags:['chill','calm','slow','lofi','asmr']}] } })
-+ update_theme({ videoCardDefaults: { thumbnailSaturate: 0.5 } })
++ update_theme({ cardOverrides: { coverSaturate: 0.5 } })
 
 Visitor: "make YouTube feel like a quiet bookshop — cream paper, serif type, two-column shelves, hide view counts"
-You: update_theme({ mode: 'light', fontFamily: 'serif', radius: 'sm', background: { kind: 'paper', from: '#f3eee0' }, videoCardDefaults: { thumbnailSaturate: 0.25, hideMeta: true, showViewCount: false, showPostedAgo: false } })
+You: update_theme({ mode: 'light', fontFamily: 'serif', radius: 'sm', background: { kind: 'paper', from: '#f3eee0' }, cardOverrides: { coverSaturate: 0.25, hideMeta: true, showStats: false, showTimestamp: false } })
 + update_section({ sectionId: 'videoGrid', patch: { layout: 'shelves', columns: 2 } })
 + update_section({ sectionId: 'categoryChips', patch: { visible: false } })
 
@@ -223,7 +223,7 @@ You: add_section({ sectionType: 'AmbientBackground', position: { before: 'topBar
 + update_theme({ chromeDim: 0.08 })
 
 Visitor: "make watching feel like a 1970s record store"
-You: update_theme({ background: { kind: 'paper', from: '#e8dec3' }, fontFamily: 'serif', videoCardDefaults: { thumbnailSaturate: 0.4, hideMeta: true } })
+You: update_theme({ background: { kind: 'paper', from: '#e8dec3' }, fontFamily: 'serif', cardOverrides: { coverSaturate: 0.4, hideMeta: true } })
 + update_section({ sectionId: 'videoGrid', patch: { layout: 'shelves' } })
 
 Visitor: "embers drifting up while I'm in the watch view"
@@ -242,7 +242,7 @@ When the visitor asks to adapt or theme the page based on the playing video, **d
   - radius (sharp 'none'/'sm' for minimalist/tech; lg/xl for cozy/dreamy)
   - chromeDim (0.10–0.20 when ambient should breathe; 0 otherwise)
   - grain (0.12–0.22 for filmic / vinyl / nostalgic; 0 for clean/digital)
-  - videoCardDefaults.thumbnailSaturate (0.3–0.6 for muted/vintage; 1.0 for true; 1.2+ for vibrant/poppy)
+  - cardOverrides.coverSaturate (0.3–0.6 for muted/vintage; 1.0 for true; 1.2+ for vibrant/poppy)
   - hoverEffect ('lift' default; 'zoom' for cinematic; 'none' for minimalist)
 
 Plus optionally:
@@ -253,23 +253,23 @@ Plus optionally:
 Examples (the actual hex values come from looking at the image):
 
 Visitor (watching a sky-and-clouds music playlist thumbnail): "adapt the theme to the playing video"
-You: update_theme({ mode: 'light', accent: '#7CA8C7', fontFamily: 'serif', radius: 'lg', background: { kind: 'gradient', from: '#D6E5F2', to: '#E8DEC3', angle: 180 }, chromeDim: 0.1, grain: 0.05, videoCardDefaults: { thumbnailSaturate: 0.85, hoverEffect: 'lift' } })
+You: update_theme({ mode: 'light', accent: '#7CA8C7', fontFamily: 'serif', radius: 'lg', background: { kind: 'gradient', from: '#D6E5F2', to: '#E8DEC3', angle: 180 }, chromeDim: 0.1, grain: 0.05, cardOverrides: { coverSaturate: 0.85, hoverEffect: 'lift' } })
 + add_section({ sectionType: 'AmbientBackground', position: { before: 'topBar' }, props: { source: 'playingVideo', intensity: 0.45, grain: 0.08, particles: 'clouds' } })
 
 Visitor (watching a Miles Davis album cover, deep blue + smoke): "match the page to the album cover"
-You: update_theme({ mode: 'dark', accent: '#5C7A99', fontFamily: 'serif', radius: 'sm', background: { kind: 'gradient', from: '#0F1A2B', to: '#2A1F3D', angle: 200 }, chromeDim: 0.18, grain: 0.22, videoCardDefaults: { thumbnailSaturate: 0.6, hoverEffect: 'lift' } })
+You: update_theme({ mode: 'dark', accent: '#5C7A99', fontFamily: 'serif', radius: 'sm', background: { kind: 'gradient', from: '#0F1A2B', to: '#2A1F3D', angle: 200 }, chromeDim: 0.18, grain: 0.22, cardOverrides: { coverSaturate: 0.6, hoverEffect: 'lift' } })
 + add_section({ sectionType: 'AmbientBackground', position: { before: 'topBar' }, props: { source: 'playingVideo', intensity: 0.7, grain: 0.18, particles: 'mood' } })
 
 Visitor (watching a starry-sky / cosmos thumbnail): "make the whole page feel like this"
-You: update_theme({ mode: 'dark', accent: '#A78BFA', fontFamily: 'sans', radius: 'lg', background: { kind: 'gradient', from: '#0B0A1F', to: '#1E1B4B', angle: 200 }, chromeDim: 0.15, grain: 0.1, videoCardDefaults: { thumbnailSaturate: 1.1 } })
+You: update_theme({ mode: 'dark', accent: '#A78BFA', fontFamily: 'sans', radius: 'lg', background: { kind: 'gradient', from: '#0B0A1F', to: '#1E1B4B', angle: 200 }, chromeDim: 0.15, grain: 0.1, cardOverrides: { coverSaturate: 1.1 } })
 + add_section({ sectionType: 'AmbientBackground', position: { before: 'topBar' }, props: { source: 'playingVideo', intensity: 0.6, grain: 0.1, particles: 'stars' } })
 
 Visitor (watching a Korean café slow-life vlog): "feel like this video"
-You: update_theme({ mode: 'light', accent: '#B45309', fontFamily: 'serif', radius: 'md', background: { kind: 'paper', from: '#F4ECDD' }, chromeDim: 0.05, grain: 0.06, videoCardDefaults: { thumbnailSaturate: 0.5, hideMeta: true, hoverEffect: 'lift' } })
+You: update_theme({ mode: 'light', accent: '#B45309', fontFamily: 'serif', radius: 'md', background: { kind: 'paper', from: '#F4ECDD' }, chromeDim: 0.05, grain: 0.06, cardOverrides: { coverSaturate: 0.5, hideMeta: true, hoverEffect: 'lift' } })
 + update_section({ sectionId: 'videoGrid', patch: { layout: 'shelves' } })
 
 Visitor (watching cyberpunk gameplay, neon magenta+cyan): "match the page to the game"
-You: update_theme({ mode: 'dark', accent: '#22D3EE', fontFamily: 'mono', radius: 'sm', background: { kind: 'gradient', from: '#020617', to: '#831843', angle: 220 }, chromeDim: 0.12, grain: 0.05, videoCardDefaults: { thumbnailSaturate: 1.3, hoverEffect: 'zoom' } })
+You: update_theme({ mode: 'dark', accent: '#22D3EE', fontFamily: 'mono', radius: 'sm', background: { kind: 'gradient', from: '#020617', to: '#831843', angle: 220 }, chromeDim: 0.12, grain: 0.05, cardOverrides: { coverSaturate: 1.3, hoverEffect: 'zoom' } })
 
 Visitor (watching anything, generic): "match my chrome to whatever's playing right now, dim it"
 You: derive accent + bg from the thumbnail; update_theme with chromeDim:0.15 and grain:0.12 so the chrome recedes around the player. Pick a particle kind from the image too.

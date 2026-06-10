@@ -1,5 +1,7 @@
 import dynamic from 'next/dynamic';
 import type { PageConfig, Section } from '@showcase/shared';
+import { host } from '@/lib/personalization';
+
 // Always-rendered templates — eager imports.
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
@@ -32,7 +34,7 @@ export interface TemplateEntry {
   claudeToolHint: string;
 }
 
-export const REGISTRY: Record<string, TemplateEntry> = {
+export const REGISTRY = {
   TopBar: {
     Component: TopBar,
     claudeToolHint:
@@ -86,7 +88,7 @@ export const REGISTRY: Record<string, TemplateEntry> = {
   SubtitleTrack: {
     Component: SubtitleTrack,
     claudeToolHint:
-      'Watch-page caption overlay. Set primary + secondary language codes (ko/en/ja/es/fr). Turn on hoverDefine for vocab tooltips, vocabPin for the side rail vocab list. Use for any "show subtitles in X + Y" prompt.',
+      'PERSISTENT per-mode caption/translation preference — applies to EVERY video watched in this mode and survives reloads (NOT a one-off per video). Set it when the visitor wants ongoing subtitles/translation, e.g. "I want videos in this mode always translated from english to korean", "show dual subtitles in X and Y", "captions in japanese + english". ADD a SubtitleTrack (or update_section the existing one) with primary = source/first language code and secondary = translation/second language code (en/ko/ja/es/fr/de/zh/…). Real captions come from each video\'s YouTube transcript — native track when YouTube has that language, otherwise machine-translated — shown dual-column in the watch-page transcript panel. To turn it off: set visible=false or remove_section. There is at most ONE per mode.',
   },
   AmbientBackground: {
     Component: AmbientBackground,
@@ -103,11 +105,11 @@ export const REGISTRY: Record<string, TemplateEntry> = {
     claudeToolHint:
       'Sidebar widget showing cumulative minutes saved by chapter auto-skip. Pair with set_filter chapterFilters + autoSkip.',
   },
-};
+} satisfies Record<string, TemplateEntry>;
 
 export function renderSection(section: Section, config: PageConfig): React.ReactNode {
-  const entry = REGISTRY[section.type];
+  const entry = host.sections[section.type];
   if (!entry) return null;
-  const { Component } = entry;
+  const Component = entry.component;
   return <Component section={section} config={config} />;
 }

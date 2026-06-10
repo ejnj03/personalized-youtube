@@ -3,6 +3,7 @@
 import { renderSection } from '../templates/registry';
 import { usePageStore } from '@/lib/store';
 import { WatchPage } from './WatchPage';
+import { LibraryView } from './LibraryView';
 
 const HEADER_TYPES = new Set(['TopBar']);
 const SIDEBAR_TYPES = new Set(['Sidebar']);
@@ -11,7 +12,7 @@ const SIDEBAR_TYPES = new Set(['Sidebar']);
 const ROOT_OVERLAY_TYPES = new Set(['AmbientBackground']);
 
 export function Site() {
-  const { config, watchingId } = usePageStore();
+  const { config, watchingId, activeNav } = usePageStore();
 
   const header = config.sections.filter((s) => HEADER_TYPES.has(s.type));
   const sidebar = config.sections.filter((s) => SIDEBAR_TYPES.has(s.type));
@@ -46,6 +47,9 @@ export function Site() {
         <main className="min-w-0 flex-1 relative z-10">
           {watchingId ? (
             <WatchPage />
+          ) : activeNav === 'You' ? (
+            // YouTube's "You"/Library page — real saved playlists + history.
+            <LibraryView />
           ) : (
             main.map((section) => (
               <div key={section.id} data-section-id={section.id} data-section-type={section.type}>{renderSection(section, config)}</div>

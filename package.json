@@ -16,13 +16,12 @@
     "test:visual": "turbo run test:visual",
     "migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
     "seed": "node --env-file=.env --import tsx scripts/seed.ts",
-    "patch-config": "node --env-file=.env --import tsx scripts/patch-base-config.ts",
-    "clean-thumbs": "node --env-file=.env --import tsx scripts/clean-thumbs.ts",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@supabase/supabase-js": "^2.45.0",
+    "@showcase/sdk": "workspace:*",
     "@showcase/shared": "workspace:*",
     "zod": "^3.23.0"
   },
@@ -31,5 +30,11 @@
     "typescript": "^5.5.0",
     "tsx": "^4.16.0",
     "@types/node": "^20.14.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "19.2.7",
+      "react-dom": "19.2.7"
+    }
   }
 }

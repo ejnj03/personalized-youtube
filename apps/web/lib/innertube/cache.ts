@@ -27,7 +27,12 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-const cache = new Map<string, CacheEntry>();
+// globalThis-backed so the cache survives Next.js dev module re-evaluation
+// (a plain module-level Map resets between requests in dev) and is shared
+// across route bundles in one process.
+const cache = ((globalThis as typeof globalThis & {
+  __ytHomeFeedCache?: Map<string, CacheEntry>;
+}).__ytHomeFeedCache ??= new Map<string, CacheEntry>());
 
 export function getCachedHomeFeed(): HomeFeedResult | null {
   const e = cache.get(KEY);
@@ -48,4 +53,62 @@ export function setCachedHomeFeed(result: HomeFeedResult): void {
 
 export function clearHomeFeedCache(): void {
   cache.delete(KEY);
+}
+
+// ─── Generic keyed TTL cache ─────────────────────────────────────────────
+// Same shape as the home-feed cache above, but keyed — for the other
+// youtubei reads (library, playlists, subscriptions, search, comments, video
+// info). Like the home feed, the underlying Chrome cookies belong to the
+// server's machine, so all visitors share one account → cache is global, not
+// per-visitor. Mirrors the spotify clone's Map<key,{value,expiresAt}> caches.
+
+// Suggested TTLs (ms). Account/content reads change slowly; per-video reads a
+// bit faster. Tune freely — short enough to feel live, long enough to be fast.
+export const CACHE_TTL = {
+  library: 10 * 60 * 1000,      // saved-playlist list
+  playlist: 30 * 60 * 1000,     // a playlist's video preview
+  subscriptions: 10 * 60 * 1000,
+  search: 10 * 60 * 1000,
+  comments: 10 * 60 * 1000,
+  videoInfo: 30 * 60 * 1000,
+  browse: 10 * 60 * 1000,       // chip/category browses (NOT continuations)
+  captions: 24 * 60 * 60 * 1000, // transcript anchor + translations (stable; pricey to regen)
+} as const;
+
+interface KeyedEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+const keyed = ((globalThis as typeof globalThis & {
+  __ytKeyedCache?: Map<string, KeyedEntry<unknown>>;
+}).__ytKeyedCache ??= new Map<string, KeyedEntry<unknown>>());
+
+/**
+ * Memoize an async fetcher under `key` for `ttlMs`. On a fresh hit returns the
+ * cached value without calling `fetcher`; otherwise fetches, conditionally
+ * stores (default: always), and returns. `shouldCache` lets callers skip
+ * memoizing transient failures (e.g. only cache `kind === 'ok'`).
+ */
+export async function withCache<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  shouldCache: (value: T) => boolean = () => true,
+): Promise<T> {
+  const hit = keyed.get(key) as KeyedEntry<T> | undefined;
+  if (hit && Date.now() < hit.expiresAt) return hit.value;
+  const value = await fetcher();
+  if (shouldCache(value)) keyed.set(key, { value, expiresAt: Date.now() + ttlMs });
+  return value;
+}
+
+/** Drop cached entries. No arg → clear all; a prefix → clear that namespace. */
+export function clearCache(prefix?: string): void {
+  if (prefix === undefined) {
+    keyed.clear();
+    return;
+  }
+  for (const k of keyed.keys()) {
+    if (k.startsWith(prefix)) keyed.delete(k);
+  }
 }

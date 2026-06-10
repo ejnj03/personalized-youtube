@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* SSR / pre-hydration fallback. Mirrors ThemeSchema's defineTokens defaults so
+   first paint matches before <PersonalizationRoot> publishes the live palette
+   to these same vars on <html>. The palette is owned by config.theme.tokens —
+   there is no separate light/dark `mode` anymore; "dark" is a token swap. */
 :root {
   --bg: #ffffff;
   --fg: #0f0f0f;
@@ -12,29 +16,15 @@
   --accent-fg: #ffffff;
   --font-scale: 1;
   --radius: 0.75rem;
-  /* Surface = the chrome (TopBar/Sidebar/CategoryChips). By default it matches bg.
-     When a gradient bg is active, we override surface to a translucent overlay so
-     the gradient shows through with a glassy frost. */
+  /* Surface = the chrome (TopBar/Sidebar/CategoryChips). Matches bg by default;
+     overridden to a translucent frost when a gradient bg is active. */
   --surface: var(--bg);
   --surface-blur: 0px;
 }
 
-[data-theme='dark'] {
-  --bg: #0f0f0f;
-  --fg: #f1f1f1;
-  --muted: #272727;
-  --muted-fg: #aaaaaa;
-  --border: #303030;
-}
-
 [data-bg='gradient'] {
-  --surface: rgba(15, 15, 20, 0.35);
-  --surface-blur: 24px;
-  /* Subtle white border with accent tint on chrome borders, visible even without backdrop-filter. */
-  --border: rgba(255, 255, 255, 0.12);
-}
-[data-theme='light'][data-bg='gradient'] {
   --surface: rgba(255, 255, 255, 0.4);
+  --surface-blur: 24px;
   --border: rgba(0, 0, 0, 0.08);
 }
 

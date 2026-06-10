@@ -1,22 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import type { PageConfig, Video } from '@showcase/shared';
+import { cardPresetCatalog } from '@showcase/shared';
+import { MediaCard, mentionInChat, type MediaItem } from '@showcase/sdk';
+import { resolveCardPreset } from '@showcase/sdk/core';
 import { usePageStore } from '@/lib/store';
 import { Avatar } from './Avatar';
-
-const ASPECT_RATIO = {
-  '16:9': 'aspect-video',
-  '4:3': 'aspect-[4/3]',
-  '1:1': 'aspect-square',
-  '3:4': 'aspect-[3/4]',
-} as const;
-
-const HOVER = {
-  none: '',
-  lift: 'transition-transform duration-200 hover:-translate-y-0.5',
-  zoom: 'transition-transform duration-200 hover:scale-[1.02]',
-} as const;
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
@@ -28,45 +17,76 @@ export function VideoCard({
   video,
   config,
   watchedFraction,
+  cardPresetOverride,
 }: {
   video: Video;
   config: PageConfig;
   watchedFraction?: number;
+  /** Per-section override of theme.cardPreset (RecommendedRow / VideoGrid). */
+  cardPresetOverride?: string;
 }) {
-  const cardDefaults = config.theme.videoCardDefaults;
-  const aspectClass = ASPECT_RATIO[cardDefaults.aspectRatio];
-  const hoverClass = HOVER[cardDefaults.hoverEffect];
-  const horizontal = cardDefaults.cardLayout === 'horizontal';
-  const saturate = cardDefaults.thumbnailSaturate ?? 1;
-  const hideMeta = cardDefaults.hideMeta ?? false;
+  const themeAny = config.theme as any;
+  const preset = resolveCardPreset(
+    cardPresetCatalog,
+    themeAny.cardPreset ?? 'video_card',
+    themeAny.cardOverrides ?? {},
+    cardPresetOverride,
+  );
+  // Effective slot-tree layout. Agent-emitted `theme.cardLayout` wins; if
+  // absent, fall back to the chosen preset's own default layout (e.g.
+  // picking `square_card` paints SQUARE_CARD_LAYOUT — avatar on top, cover,
+  // title below) so the catalog's archetype is meaningfully complete. If
+  // even that's missing, MediaCard uses the legacy fixed render.
+  const cardLayout = themeAny.cardLayout ?? preset.layout;
+
   const isWatched = video.watched === true;
   const watchedMode = config.filter.showWatchedOverlay && isWatched;
-  const [hidden, setHidden] = useState(false);
-  const imgRef = useRef<HTMLImageElement | null>(null);
 
-  useEffect(() => {
-    const img = imgRef.current;
-    if (img && img.complete && img.naturalWidth === 0) setHidden(true);
-  }, []);
+  // Map domain shape → MediaItem. When the agent sets a custom cardLayout,
+  // its slot tree references string fields like 'avatar' / 'channelAvatar'
+  // by source name — pass URL strings AS WELL AS the rich Avatar component
+  // so both legacy (ReactNode) and layout (URL) paths work.
+  const item: MediaItem = {
+    cover: video.thumbnail,
+    alt: video.title,
+    title: video.title,
+    subtitle: video.channel.name,
+    subtitleVerified: video.channel.verified,
+    avatar: cardLayout
+      ? video.channel.avatar          // layout path uses URL string
+      : <Avatar name={video.channel.name} src={video.channel.avatar} size="md" />,
+    badge: video.duration,
+    stats: `${formatViews(video.views)} views`,
+    timestamp: video.postedAgo,
+    description: video.description,
+  };
+  // Extra fields that the agent's slot tree may reference by source name
+  // (channelAvatar / channel / duration). Index signature accepts these
+  // without needing to widen the typed MediaItem.
+  item.channelAvatar = video.channel.avatar;
+  item.channel = video.channel.name;
+  item.duration = video.duration;
 
-  if (hidden) return null;
-
-  const thumb = (
-    <div className={`relative overflow-hidden rounded-xl bg-[color:var(--muted)] ${aspectClass} ${horizontal ? 'w-1/2 shrink-0' : ''}`}>
-      <img
-        ref={imgRef}
-        src={video.thumbnail}
-        alt={video.title}
-        loading="lazy"
-        onError={() => setHidden(true)}
-        className="h-full w-full object-cover"
-        style={saturate !== 1 ? { filter: `saturate(${saturate})` } : undefined}
-      />
-      {cardDefaults.showDuration && (
-        <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-xs text-white">
-          {video.duration}
-        </span>
-      )}
+  const overlay = (
+    <>
+      {/* Hover affordance: @-mention this video into the chat (→ pin, etc.). */}
+      <button
+        type="button"
+        aria-label={`Mention "${video.title}" in chat`}
+        title="Mention in chat"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          mentionInChat(video.title, {
+            id: video.id,
+            title: video.title,
+            channel: video.channel.name,
+          });
+        }}
+        className="absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full bg-black/70 text-sm font-semibold text-white opacity-0 transition-opacity hover:bg-black/90 group-hover:opacity-100"
+      >
+        @
+      </button>
       {watchedMode && (
         <span className="absolute left-2 top-2 rounded bg-black/85 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-white/80">
           Watched
@@ -78,84 +98,29 @@ export function VideoCard({
           style={{ width: `${Math.min(100, Math.max(0, watchedFraction * 100))}%` }}
         />
       )}
-    </div>
+    </>
   );
 
-  const meta = (
-    <div className={`flex gap-3 ${horizontal ? 'min-w-0 flex-1 items-start' : ''}`}>
-      {!horizontal && (
-        <Avatar name={video.channel.name} src={video.channel.avatar} size="md" />
-      )}
-      <div className="min-w-0">
-        <h3
-          className={`line-clamp-2 leading-snug ${horizontal ? 'text-base' : 'text-sm'}`}
-          style={{ fontWeight: cardDefaults.titleWeight }}
-        >
-          {video.title}
-        </h3>
-        <p
-          className="mt-1 truncate text-xs text-[color:var(--muted-fg)]"
-          style={{ fontWeight: cardDefaults.channelNameWeight }}
-        >
-          {video.channel.name}
-          {video.channel.verified && <span className="ml-1">✓</span>}
-        </p>
-        {!hideMeta && (cardDefaults.showViewCount || cardDefaults.showPostedAgo) && (
-          <p className="mt-0.5 text-xs text-[color:var(--muted-fg)]">
-            {cardDefaults.showViewCount && `${formatViews(video.views)} views`}
-            {cardDefaults.showViewCount && cardDefaults.showPostedAgo && ' · '}
-            {cardDefaults.showPostedAgo && video.postedAgo}
-          </p>
-        )}
-        {(cardDefaults.showDescription || horizontal) && video.description && (
-          <p className="mt-1 line-clamp-2 text-xs text-[color:var(--muted-fg)]">
-            {video.description}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-
-  const { setWatching, youtubeMode } = usePageStore();
+  const { setWatching } = usePageStore();
   const watchHref = `https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}`;
+  const watchedDim = watchedMode ? 'opacity-40' : '';
 
   function onCardClick(e: React.MouseEvent): void {
-    // Cmd/Ctrl-click or middle-click → fall through to native open-in-new-tab.
+    // Cmd/Ctrl/Shift-click or middle-click → native open-in-new-tab.
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-    // In YouTube mode the embed iframe will load this video. In mock mode we
-    // don't have real YouTube IDs, so let the link open externally.
-    if (!youtubeMode) return;
     e.preventDefault();
     setWatching(video.id, video.title);
   }
 
-  const watchedDim = watchedMode ? 'opacity-40' : '';
-
-  if (horizontal) {
-    return (
-      <a
-        href={watchHref}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={onCardClick}
-        className={`group flex gap-4 cursor-pointer ${hoverClass} ${watchedDim}`}
-      >
-        {thumb}
-        {meta}
-      </a>
-    );
-  }
-
   return (
-    <a
+    <MediaCard
+      item={item}
+      preset={preset}
+      layout={cardLayout}
+      overlay={overlay}
       href={watchHref}
-      target="_blank"
-      rel="noopener noreferrer"
       onClick={onCardClick}
-      className={`group flex flex-col gap-3 cursor-pointer ${hoverClass} ${watchedDim}`}
-    >
-      {thumb}
-      {meta}
-    </a>
+      outerClassName={watchedDim}
+    />
   );
 }

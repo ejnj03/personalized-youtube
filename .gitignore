@@ -16,3 +16,16 @@ playwright-report/
 test-results/
 .vercel
 *.tsbuildinfo
+
+# nested clone of vercel/commerce — separate repo
+commerce/
+
+# Generated GitHub-wiki pages (source of truth: packages/sdk/docs/)
+/wiki/
+
+# Local-only: call logs + scrape cache
+/logs/
+.firecrawl/
+
+# Spotify clone is its own git repo (einjun03/spotify-react-web-client) — managed separately, not embedded here.
+/spotify-react-web-client/

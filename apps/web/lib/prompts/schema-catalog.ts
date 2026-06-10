@@ -146,23 +146,23 @@ Top-level theme object. Use update_theme.
       intensity?: 0..1                                 // for kind:'sampled'
     }
     Pattern: "feel like a quiet bookshop" → kind:'paper', from:'#f3eee0', PLUS update fontFamily:'serif'.
-  - videoCardDefaults: {
-      aspectRatio: '16:9'|'4:3'|'1:1'|'3:4',
-      thumbnailScale: 0.5–2,
-      titleWeight: 100–900,
-      channelNameWeight: 100–900,
-      showDescription / showViewCount / showPostedAgo / showDuration: boolean,
-      cardLayout: 'vertical' | 'horizontal',
-      hoverEffect: 'none' | 'lift' | 'zoom',
-      thumbnailSaturate: 0..1.5,   // 0.25 = soft sepia, 1 = unchanged, 1.3 = vivid
-      hideMeta: boolean             // hide views/age line
-    }
+  - cardPreset: string  // named media-card archetype. Pick by vibe (see cardPreset description in update_theme tool surface). Options shipped today: video_card, square_card, shorts_card, compact_card, poster_card, audio_card, horizontal_row.
+  - cardOverrides: Partial<CardPreset>  // USE SPARINGLY — only when no preset fits the prompt. Per-field nudges on top of the chosen preset. Available fields:
+      aspect: '16:9'|'4:3'|'1:1'|'3:4'|'9:16',
+      orientation: 'vertical'|'horizontal',
+      coverScale: 0.5–2,
+      coverSaturate: 0..1.5,        // 0.25 = soft sepia, 1 = unchanged, 1.3 = vivid
+      coverFit: 'cover'|'contain',  // 'contain' letterboxes when card aspect mismatches image
+      hoverEffect: 'none'|'lift'|'zoom',
+      showDescription / showStats / showTimestamp / showDuration: boolean,
+      hideMeta: boolean             // hides stats+timestamp line in one move
+  - layoutPreset: string  // named collection layout (how cards arrange on the page). Options shipped today: grid_default, grid_oneCol, grid_twoCol, grid_compact, row_scroll, row_dense, magazine.
 
 VideoGrid section also has a \`layout: 'grid' | 'shelves' | 'list'\` prop. 'shelves' is a 2-column bookshop-style layout with section titles between groups.
 
 VideoGrid also accepts curated-feed props that REPLACE the home feed with a union of search queries:
   - sources: Array<{ query: string, topN?: number }>  // each query is run against YouTube /search; top N from each is merged & deduped by video id. Existing set_filter applies on top (so set minSubscriberCount / excludeTitleMatches for quality cleanup).
-  - schedule: { activeHoursLocal: [start, end] }      // 0-23, end exclusive. Wraps midnight when start>end. Outside the window the grid falls back to the static \`videos\` prop. Omit when the visitor doesn't name a time.
+  - schedule: { start: "HH:MM", end: "HH:MM" }        // 24h local, minute precision; end exclusive. Wraps midnight when end<=start. Outside the window the grid falls back to the static \`videos\` prop. Omit when the visitor doesn't name a time.
 This is the right mechanism for prompts like "only show me playlists in the morning", "tune my feed for studying after dinner", or any persistent content curation. Use the iterative ask_user pattern (see editing rule 8) to gather 1–3 concrete keywords before composing the sources array.
 
 ## Filter and sort
@@ -206,7 +206,7 @@ When the visitor says "more chill jazz", that's requireTags: ['jazz', 'chill']. 
 
 These primitives compose. The 6 designed scenarios are starting points, not the only shapes. Examples of going further:
   - "Snowfall on the homepage when it's late" → AmbientBackground { particles:'snow', intensity:0.4 } + update_theme { chromeDim:0.1 }
-  - "Make watching feel like a 1970s record store" → update_theme { background:{kind:'paper',from:'#e8dec3'}, fontFamily:'serif', videoCardDefaults:{thumbnailSaturate:0.4, hideMeta:true} } + update_section videogrid { layout:'shelves' }
+  - "Make watching feel like a 1970s record store" → update_theme { background:{kind:'paper',from:'#e8dec3'}, fontFamily:'serif', cardPreset:'compact_card', cardOverrides:{coverSaturate:0.4} } + update_section videogrid { layout:'shelves' }
   - "Only deep-dives I haven't watched, with a time-saved counter" → set_filter { hideWatched:true } + set_sort { by:'density', secondary:'duration' } + add_section TimeSavedTally
   - "Group by 'decompress / sharpen / nostalgia' and dim my watched stuff" → remove_section videogrid + add_section MoodBoard { moods:[{id:'decompress',...}, {id:'sharpen',...}, {id:'nostalgia',...}] } + set_filter { showWatchedOverlay:true }
 

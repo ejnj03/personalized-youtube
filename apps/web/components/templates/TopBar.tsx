@@ -10,7 +10,6 @@ export function TopBar({ section, config }: { section: Section; config: PageConf
   const {
     dispatch,
     setYtContinuation,
-    youtubeMode,
     setActiveNav,
     setWatching,
     enterSearch,
@@ -35,7 +34,6 @@ export function TopBar({ section, config }: { section: Section; config: PageConf
     e.preventDefault();
     const q = query.trim();
     if (q.length === 0 || searching) return;
-    if (!youtubeMode) return;
     setSearching(true);
     try {
       const res = await fetch(`/api/yt/search?q=${encodeURIComponent(q)}`);
@@ -124,15 +122,15 @@ export function TopBar({ section, config }: { section: Section; config: PageConf
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={youtubeMode ? searchPlaceholder : `${searchPlaceholder} (mock mode)`}
+          placeholder={searchPlaceholder}
           disabled={searching}
           className="w-full rounded-l-full border border-[color:var(--border)] bg-[color:var(--bg)] px-4 py-2 text-sm outline-none focus:border-[color:var(--accent)] disabled:opacity-60"
         />
         <button
           type="submit"
           aria-label="Search"
-          disabled={searching || !youtubeMode}
-          title={youtubeMode ? 'Search your YouTube' : 'Search requires SHOWCASE_FEED_SOURCE=youtube'}
+          disabled={searching}
+          title="Search your YouTube"
           className="rounded-r-full border border-l-0 border-[color:var(--border)] bg-[color:var(--muted)] px-5 hover:bg-[color:var(--border)] disabled:opacity-50"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">

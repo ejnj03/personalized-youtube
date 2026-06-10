@@ -1,0 +1,47 @@
+/**
+ * SDK stylesheet — hosts import this once:
+ *   import '@showcase/sdk/styles.css';
+ *
+ * Ships the compiled Tailwind utilities for every class the SDK uses
+ * (chat panel, etc.) plus sensible defaults for the CSS variables the
+ * components reference. Hosts can override the variables on any
+ * ancestor element to retheme the panel without touching SDK source.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Surface */
+  --bg: #ffffff;
+  --fg: #0a0a0a;
+  --surface: #ffffff;
+  --muted: #f4f4f5;
+  --muted-fg: #71717a;
+  --border: #e4e4e7;
+  /* Brand */
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+
+  /* Background shown behind letterboxed media (object-fit:contain leaves
+   * padding where the image aspect doesn't match the card aspect). Derived
+   * from --fg so it tracks the theme: 20% of --fg mixed with black gives a
+   * near-black bar on light themes (where --fg is dark) and a dark-gray
+   * bar on dark themes (where --fg is light). Hosts can override by
+   * setting --cover-bg on any ancestor. */
+  --cover-bg: color-mix(in srgb, var(--fg) 20%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0a;
+    --fg: #fafafa;
+    --surface: #18181b;
+    --muted: #27272a;
+    --muted-fg: #a1a1aa;
+    --border: #3f3f46;
+    --accent: #3b82f6;
+    --accent-fg: #ffffff;
+  }
+}

@@ -1,0 +1,9 @@
+# Replace <org>/<repo> with your GitHub path once published.
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Documentation (Wiki)
+    url: https://github.com/<org>/<repo>/wiki
+    about: SDK guides — getting started, theme, sections, persistence, server, concepts.
+  - name: 💬 Questions & discussion
+    url: https://github.com/<org>/<repo>/discussions
+    about: Ask a question or float an idea before filing an issue.

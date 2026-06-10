@@ -56,6 +56,18 @@ const config: Config = {
     },
   },
   plugins: [],
+  // SDK media components (MediaCollection) build column class strings at
+  // runtime from a numeric `preset.columns`, so Tailwind's content scan
+  // can't see them and prunes the responsive variants. Without these
+  // entries, any MediaCollection grid falls back to grid-cols-1 at every
+  // breakpoint. Mirror the same safelist the SDK ships in its own build.
+  safelist: [
+    'grid-cols-1',
+    'grid-cols-2', 'sm:grid-cols-2',
+    'grid-cols-3', 'lg:grid-cols-3',
+    'grid-cols-4', 'xl:grid-cols-4',
+    'grid-cols-5', '2xl:grid-cols-5',
+  ],
 };
 
 export default config;

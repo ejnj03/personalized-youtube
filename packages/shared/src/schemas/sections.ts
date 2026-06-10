@@ -1,4 +1,6 @@
 import { z } from 'zod';
+// Server-safe '/core' entry (this schema is parsed in RSC/server contexts).
+import { sourceRulesField, SourceScheduleSchema } from '@showcase/sdk/core';
 import { Video, Short, Chapter } from './video';
 
 const baseSection = <T extends string, P extends z.ZodRawShape>(type: T, props: P) =>
@@ -29,6 +31,23 @@ export const CategoryChips = baseSection('CategoryChips', {
 });
 
 export const VideoGrid = baseSection('VideoGrid', {
+  // Optional per-section overrides of the theme-level card / layout presets.
+  // When set, this section renders with the named preset instead of inheriting
+  // the theme default — lets a single grid use a different archetype.
+  cardPreset: z
+    .string()
+    .optional()
+    .describe(
+      'Override theme.cardPreset for THIS section only. Pick a card archetype ' +
+        'name (e.g. "square_card", "audio_card", "horizontal_row").',
+    ),
+  layoutPreset: z
+    .string()
+    .optional()
+    .describe(
+      'Override theme.layoutPreset for THIS section only. Pick a layout name ' +
+        '(e.g. "grid_oneCol", "grid_compact", "row_scroll").',
+    ),
   columns: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).default(4),
   density: z.enum(['compact', 'cozy', 'comfortable']).default('cozy'),
   // 'grid'    — standard column grid (default).
@@ -36,47 +55,55 @@ export const VideoGrid = baseSection('VideoGrid', {
   // 'list'    — single column, horizontal cards, dense info.
   layout: z.enum(['grid', 'shelves', 'list']).default('grid'),
   videos: z.array(Video).default([]),
-  // Curated-feed sources. When non-empty AND the schedule window (if set) is
-  // active, the grid loads videos by running each search query in parallel,
-  // taking the top `topN` from each, and merging them (deduped by video id).
-  // Existing client-side filters (requireLanguage, minSubscriberCount, etc.)
-  // run on the union, so low-quality stragglers still get dropped.
-  sources: z
-    .array(
-      z.object({
-        query: z.string(),
-        topN: z.number().int().positive().default(8),
-      }),
-    )
-    .default([]),
-  // Time-of-day gating. When set, `sources` only apply when the visitor's
-  // local hour is within [start, end) — end exclusive, both 0–23. Outside
-  // the window, the grid falls back to the static `videos` array.
-  // Wraps midnight when start > end (e.g. [22, 6] = 10pm–6am).
-  schedule: z
-    .object({
-      activeHoursLocal: z.tuple([
-        z.number().int().min(0).max(23),
-        z.number().int().min(0).max(23),
-      ]),
-    })
-    .optional(),
+  // Curated content RULES (SDK SourceRules). Each rule = curated `queries` +
+  // named `creators` (channels/youtubers) + optional title `tags` + optional
+  // time window. Non-empty → the grid fetches these searches (every query AND
+  // creator, deduped, topN each), narrows by tags, and re-evaluates windows
+  // every minute — no LLM call to apply. The agent curates + writes them.
+  sources: sourceRulesField(
+    'Curated content rules for this row. Each rule = curated `queries` (concrete search phrases) + `creators` (specific YouTube channels/youtubers) + optional title `tags` + optional time window. Non-empty → the row is filled by these searches instead of the static videos. Use this (NOT request_more_content) for PERSISTENT/scheduled requests like "only academic videos from 9–11pm" — and CURATE several concrete queries + real channels, not one vague term.',
+  ),
+  // Section-level fallback window for rules that don't set their own schedule.
+  schedule: SourceScheduleSchema.optional().describe(
+    'Default time window applied to any `sources` rule that has no schedule of its own.',
+  ),
 });
 
+// A NAMED, curated row. Add several (via add_section) to build "first row X,
+// rows beneath Y". Each has an editable title + the full SourceRules + a list
+// of pinned videos that stick to the front.
 export const RecommendedRow = baseSection('RecommendedRow', {
-  headline: z.string().default('Recommended for you'),
+  // Optional per-section override of theme.cardPreset for this row.
+  cardPreset: z
+    .string()
+    .optional()
+    .describe(
+      'Override theme.cardPreset for THIS row only. Pick a card archetype ' +
+        '(e.g. "audio_card", "compact_card").',
+    ),
+  headline: z
+    .string()
+    .default('Recommended for you')
+    .describe('The row title shown above it (the visitor can also click it to rename). NAME it for its content, e.g. "Korean grammar lessons".'),
   videos: z.array(Video).default([]),
-  // Same curated-feed contract as VideoGrid.sources. When non-empty, the row
-  // fetches videos by running each query and merging the top `topN` from each.
-  // Used by chat when it adds a topical row like "Lo-fi, acoustic, jazz".
-  sources: z
+  // Pinned videos — always shown FIRST and persist regardless of sources /
+  // schedule, until removed. The agent adds a full video object here when the
+  // visitor asks to pin/insert a specific video into this row.
+  pinned: z
     .array(
       z.object({
-        query: z.string(),
-        topN: z.number().int().positive().default(8),
+        id: z.string(),
+        title: z.string().default(''),
+        channel: z.string().default(''),
       }),
     )
-    .default([]),
+    .default([])
+    .describe('Videos pinned to the FRONT of this row; they persist until removed. When the visitor @-mentions/references a video and asks to pin/insert it here, push { id, title, channel } (from the referenced video) into this array. Remove an entry to unpin.'),
+  // Curated rules (SDK SourceRules) — same contract as VideoGrid.sources.
+  sources: sourceRulesField(
+    'Curated content rules for this NAMED row — curated `queries` + `creators` (channels/youtubers) + optional title `tags` + optional time window. Non-empty → the row fills from these searches. Pair with a descriptive `headline` (e.g. headline "Korean variety shows" + queries ["korean variety show","런닝맨"]).',
+  ),
+  schedule: SourceScheduleSchema.optional().describe('Default time window for sources without their own schedule.'),
 });
 
 export const ShortsRow = baseSection('ShortsRow', {
