@@ -1,0 +1,68 @@
+@use '../../styles/variables.scss' as *;
+
+.lyrics-view {
+  height: 100%;
+  overflow-y: auto;
+  padding: 40px 60px 200px;
+  color: $text-primary-color;
+
+  &--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $text-secondary-color;
+    font-size: 18px;
+  }
+
+  &__header {
+    margin-bottom: 32px;
+
+    h2 {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 4px;
+      color: $text-primary-color;
+    }
+    p {
+      font-size: 16px;
+      margin: 0;
+      color: $text-secondary-color;
+    }
+  }
+
+  &__lines {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  &__line {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: color-mix(in srgb, $text-secondary-color 60%, transparent);
+    transition: color 200ms ease, transform 200ms ease;
+
+    &.is-past {
+      color: color-mix(in srgb, $text-secondary-color 40%, transparent);
+    }
+
+    &.is-active {
+      color: $text-primary-color;
+      transform: scale(1.02);
+      transform-origin: left center;
+    }
+  }
+
+  &__plain {
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    color: $text-primary-color;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+}

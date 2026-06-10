@@ -1,0 +1,35 @@
+// variable desktop breakpoint
+$desktop-breakpoint: 768px;
+$desktop-small-breakpoint: 900px;
+
+// ─── color palette ────────────────────────────────────────────────────────
+//
+// Each SCSS variable's *value* is a CSS `var(--token, fallback)` expression.
+// At SCSS compile time, every consumer (background-color: $background-color,
+// etc.) becomes `background-color: var(--bg, #121212)` in the emitted CSS.
+//
+// The SDK's <PersonalizationRoot> writes `--bg`, `--surface`, `--muted`,
+// `--fg`, `--muted-fg` to <html>.style based on `config.theme.tokens`. When
+// those vars aren't set (host hasn't migrated, SSR, JS disabled), the CSS
+// `var()` fallback paints spotify's original color — so this change is
+// risk-free.
+
+$background-color: var(--bg, #121212);          // page bg, sidebar outer, main-section
+$surface-color: var(--surface, #1f1f1f);        // top bar, playing bar, cards, panels
+$elevated-color: var(--muted, #282828);         // hover states, modal bg, deeper layers
+$text-primary-color: var(--fg, white);
+$text-secondary-color: var(--muted-fg, #b3b3b3);
+
+// Body / outermost frame — one tier darker than $background-color so the page
+// content reads as floating on a recessed backdrop (spotify's signature
+// layered look). Derived via color-mix so it tracks the theme's --bg token.
+$body-color: color-mix(in srgb, var(--bg, #121212), black 5%);
+
+// Brand color — spotify's two-green hierarchy:
+// `--accent` (#1db954) is the primary brand green for text / borders / active state.
+// `$accent-vibrant-color` is derived via color-mix: 8% white blend brightens it for
+// play buttons. This way the SDK's single `tokens.accent` token controls both shades.
+$accent-color: var(--accent, #1db954);
+$accent-vibrant-color: color-mix(in srgb, var(--accent, #1db954), white 8%);
+
+$container-border-radius: 10px;

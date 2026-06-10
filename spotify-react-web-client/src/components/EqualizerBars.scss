@@ -1,0 +1,25 @@
+@use '../styles/variables.scss' as *;
+
+.equalizer-bars {
+  display: inline-block;
+  color: $accent-color;
+  vertical-align: middle;
+
+  .eq-bar {
+    fill: currentcolor;
+    transform-box: fill-box;
+    transform-origin: bottom;
+    animation: equalizer-pulse 0.9s ease-in-out infinite;
+  }
+  &.is-paused .eq-bar {
+    animation-play-state: paused;
+  }
+  .eq-bar--1 { animation-delay: -0.2s; }
+  .eq-bar--2 { animation-delay: -0.6s; }
+  .eq-bar--3 { animation-delay: -0.4s; }
+}
+
+@keyframes equalizer-pulse {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}

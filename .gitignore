@@ -27,5 +27,3 @@ commerce/
 /logs/
 .firecrawl/
 
-# Spotify clone is its own git repo (einjun03/spotify-react-web-client) — managed separately, not embedded here.
-/spotify-react-web-client/
