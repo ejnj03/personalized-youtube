@@ -74,7 +74,7 @@ The package ships separate entry points because of how React Server Components t
 
 - `@showcase/sdk` (the **root barrel**) bundles the client components — `ChatPanel`, `PersonalizationRoot` — so it carries a hoisted `'use client'`. Importing **anything** from it into a server-evaluated module marks that module as client; *calling* a function from it on the server throws _"called from the server."_
 - `@showcase/sdk/core` is **directive-free**. The host builders (`defineHost`, `defineTokens`, `defineFonts`, `defineCardPresets`, …) and the patch model live here, safe to evaluate on the server.
-- `@showcase/sdk/server` holds the route handlers; `@showcase/sdk/supabase` holds the server-only persistence.
+- `@showcase/sdk/server` holds the route handlers; `@showcase/sdk/sqlite` and `@showcase/sdk/supabase` hold the two server-only persistence adapters.
 
 **The rule:** any module that runs (or might run) on the server — a Next.js RSC, a route handler, or a **schema imported by one** — must import builders from `@showcase/sdk/core`. Mount components and hooks (`PersonalizationRoot`, `ChatPanel`, `useConfig`) come from `@showcase/sdk` and are only ever used in client components.
 

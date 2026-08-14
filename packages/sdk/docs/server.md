@@ -73,6 +73,7 @@ The SDK ships the **chat** handler. The mode/page/history/reset endpoints the [c
 | You're importing | From |
 |---|---|
 | `createNextHandler`, `createChatHandler` | `@showcase/sdk/server` |
+| `sqlitePersistence` | `@showcase/sdk/sqlite` |
 | `supabasePersistence`, `loadSupabaseBaseConfig` | `@showcase/sdk/supabase` |
 | `defineHost`, theme builders, `applyPatches` | `@showcase/sdk/core` |
 | `PersonalizationRoot`, `ChatPanel`, hooks | `@showcase/sdk` (client only) |

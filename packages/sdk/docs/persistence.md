@@ -16,14 +16,46 @@ const host = defineHost({ /* … */, persistence: localStoragePersistence({ name
 | `inMemoryPersistence()` | RAM (lost on refresh) | per tab | local dev, tests, throwaway demos |
 | `localStoragePersistence({ namespace })` | browser `localStorage` | per browser | client-only apps, no backend |
 | `cookiePersistence(opts)` | a cookie | per browser | tiny state you want sent to the server |
+| `sqlitePersistence(file?)` | a local SQLite file | per visitor, **multi-mode**, one machine | local dev and self-hosted single-server apps |
 | `supabasePersistence(client, opts?)` | Postgres (Supabase) | per visitor, **cross-device, multi-mode** | production, shared/server-rendered apps |
 
 ```ts
 import { inMemoryPersistence, localStoragePersistence, cookiePersistence } from '@showcase/sdk';
+import { sqlitePersistence } from '@showcase/sdk/sqlite';
 import { supabasePersistence } from '@showcase/sdk/supabase';
 ```
 
-> The three browser adapters come from the root `@showcase/sdk`. `supabasePersistence` lives in `@showcase/sdk/supabase` because it's **server-only** (it uses a service-role key — never import it into client code).
+> The three browser adapters come from the root `@showcase/sdk`. The other two are **server-only** and live behind their own entry points: `supabasePersistence` uses a service-role key, and `sqlitePersistence` needs Node's filesystem. Never import either into client code.
+
+## SQLite (the zero-setup server path)
+
+Server-side persistence with nothing to provision. Both reference hosts in this repo use it.
+
+```ts
+import { sqlitePersistence } from '@showcase/sdk/sqlite';
+
+const persistence = sqlitePersistence();              // ./.showcase/showcase.db
+const persistence = sqlitePersistence('.showcase/spotify.db');   // or an explicit path
+```
+
+`better-sqlite3` is an **optional peer dependency** — install it only if you use this adapter:
+
+```bash
+pnpm add better-sqlite3
+```
+
+Three things to know:
+
+- **The default path is relative to `process.cwd()`**, so two hosts started from different directories get separate stores. That is usually right (they are different sites), but pass an explicit path to make it deliberate rather than incidental.
+- **It will not work on serverless.** Vercel and friends have an ephemeral filesystem, so writes vanish between invocations. Use `supabasePersistence` there.
+- **The connection opens lazily**, on first use rather than at construction, so importing a module that calls `sqlitePersistence()` does not touch the disk.
+
+In Next.js, mark the native module external or webpack will try to bundle the `.node` binary:
+
+```js
+// next.config.mjs
+const nextConfig = { serverExternalPackages: ['better-sqlite3'] };
+```
 
 ## Supabase (the production path)
 
@@ -57,7 +89,7 @@ export const { POST, runtime, dynamic } = createNextHandler({
 | `chat_turns` | `visitor_id`, `site_id`, `mode_id`, `user_message`, `assistant_message`, `tool_uses`, `created_at` |
 | `modes` | `id`, `visitor_id`, `site_id`, `title`, `created_at` |
 
-The migrations in [`supabase/migrations/`](../../../supabase/migrations/) set this up — run `pnpm migrate` from the repo root. Companion helpers `loadSupabaseBaseConfig(client, slug)` and `setSupabaseBaseConfig(client, slug, config)` read/seed the per-page `base_config`.
+The migrations in [`supabase/migrations/`](../../../supabase/migrations/) describe this schema. Apply them with the Supabase CLI or its SQL editor; this repo no longer ships a `pnpm migrate` script, since the default setup is SQLite. Companion helpers `loadSupabaseBaseConfig(client, slug)` and `setSupabaseBaseConfig(client, slug, config)` read/seed the per-page `base_config`.
 
 ## Modes (save-slots) come for free
 

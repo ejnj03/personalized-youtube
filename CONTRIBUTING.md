@@ -7,11 +7,18 @@ Thanks for working on this! 💛 This is a pnpm monorepo: one reusable package (
 ## Setup
 
 ```bash
+nvm use                                  # Node 20 — see .nvmrc
 corepack enable && corepack prepare pnpm@9 --activate
 pnpm install
-cp .env.example .env        # fill in Anthropic + Supabase keys (both apps read this one file)
-pnpm migrate                # apply the Postgres schema once
+pnpm --filter @showcase/sdk build        # apps resolve @showcase/sdk to its gitignored dist/
+cp .env.example .env                     # ANTHROPIC_API_KEY (both apps read this one file)
 ```
+
+No database step. Persistence is a local SQLite file created on first write.
+
+**Node 20 specifically.** `better-sqlite3` ships a native binary compiled for one
+Node ABI, so installing under a different major leaves a binary the other major
+cannot load.
 
 Run what you're working on:
 
@@ -31,7 +38,7 @@ packages/sdk/     🧩 the engine — edit here to change SDK behavior (see its 
 packages/shared/  Zod schemas the YouTube clone builds on
 apps/web/         YouTube clone (Next.js host)
 spotify-react-web-client/  Spotify clone (CRA host + Hono server)
-supabase/migrations/       append-only Postgres schema
+supabase/migrations/       Postgres schema for the optional hosted adapter
 ```
 
 If you change the SDK, run its watch build (`pnpm --filter @showcase/sdk dev`) so the apps pick up your changes — they consume the built `dist/`.
@@ -42,7 +49,7 @@ These aren't style nits — breaking them breaks the system:
 
 - **🔑 Respect the import boundary.** The SDK ships four entry points. From any module that runs on the server (a Next RSC, a route handler, or a schema imported by one), import builders from **`@showcase/sdk/core`** — never the root `@showcase/sdk`, which carries a hoisted `'use client'`. Full explanation: [Concepts → the boundary](packages/sdk/docs/concepts.md#the-client--server-boundary).
 - **Zod schemas are the single source of truth.** React props, Claude's tools, and runtime validators all derive from one schema. Add the prop to the schema; don't hand-write a tool definition or validator.
-- **Migrations are append-only.** Never edit a merged file in `supabase/migrations/` — add a new numbered one. They must be idempotent (`create … if not exists`, `add column if not exists`).
+- **Migrations are append-only.** Never edit a merged file in `supabase/migrations/` — add a new numbered one, idempotent (`create … if not exists`). These describe the schema `supabasePersistence` targets; the default local setup uses SQLite and does not run them.
 - **Section IDs are stable.** Never regenerate an existing section's `id`; patches reference it across edits.
 - **Keep section/theme props flat.** Claude edits `props.headline`, not `props.content.heading.text`.
 - **Don't bust the prompt cache.** Per-visitor state goes last in the system prompt. If you touch prompt assembly, keep volatile content after the cacheable segments (see [Concepts → the prompt cache](packages/sdk/docs/concepts.md#the-prompt-cache)).

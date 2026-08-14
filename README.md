@@ -38,7 +38,7 @@ You ──prompt──▶ ChatPanel ──▶ /api/chat ──▶ Claude (Opus) 
                               typed Patch  ◀──  update_section / update_theme /
                                    │             add_section / request_more_content …
                                    ▼
-         applyPatch(config, patch) ──▶ optimistic re-render ──▶ persist (Supabase, per-mode)
+         applyPatch(config, patch) ──▶ optimistic re-render ──▶ persist (SQLite, per-mode)
 ```
 
 - **`packages/sdk`** — the host-agnostic core: the patch model, `defineHost`, Zod-derived tool schemas, the 4-segment **prompt cache** structure, `MediaCard` / `MediaFeed` / `useSourceRules`, tokens/fonts/card/layout presets, and the streaming chat handler. Server-safe `/core` + `/server` entries keep the client bundle out of RSC.
@@ -48,7 +48,7 @@ One engine, two apps. Adding a third host is mostly a schema + a fetcher.
 
 ## Stack
 
-Next.js 15 · React 19 · Tailwind · Zustand · Supabase · **Anthropic Claude** (`claude-opus`) · `youtubei.js` (real YouTube via Chrome cookies) · Spotify Web API · pnpm workspaces + Turbo · strict TypeScript end-to-end.
+Next.js 15 · React 19 · Tailwind · Zustand · SQLite (`better-sqlite3`) · **Anthropic Claude** (`claude-opus`) · `youtubei.js` (real YouTube via Chrome cookies) · Spotify Web API · pnpm workspaces + Turbo · strict TypeScript end-to-end.
 
 ## Repo layout
 
@@ -58,18 +58,30 @@ showcase/
   packages/shared/          # YouTube host schemas (Zod single-source-of-truth)
   apps/web/                 # YouTube clone (Next.js)
   spotify-react-web-client/ # Spotify clone (CRA + Hono backend)
-  supabase/migrations/      # append-only SQL (sites, visitors, preferences, modes, chat_turns)
+  supabase/migrations/      # SQL for the OPTIONAL hosted adapter — not used by
+                            # the default local setup, kept as its schema record
 ```
 
 ## Run it
 
+Node 20 is required (see `.nvmrc`) — `better-sqlite3` is a native module and binds to one Node ABI.
+
 ```bash
+nvm use                              # or any Node 20.x
 pnpm install
-pnpm migrate            # apply DB schema (needs SUPABASE_ACCESS_TOKEN)
-pnpm dev                # YouTube clone on :3000 (+ SDK watcher)
+pnpm --filter @showcase/sdk build    # the apps import the SDK's dist/, which is gitignored
+cp .env.example .env                 # add ANTHROPIC_API_KEY
+pnpm --filter @showcase/web dev      # YouTube clone on :3000
 ```
 
-The YouTube host needs Chrome signed into YouTube (first run prompts macOS Keychain → *Always Allow*). The Spotify clone runs from `spotify-react-web-client/` with its own dev server + token.
+No database to provision and no seed step: visitor state goes to a local SQLite file (`.showcase/showcase.db`) that is created on first write.
+
+The YouTube host needs Chrome signed into YouTube (first run prompts macOS Keychain → *Always Allow*). The Spotify clone runs from `spotify-react-web-client/` and needs two processes plus a Spotify app of your own:
+
+```bash
+pnpm --filter spotify-client run dev:server   # Hono API   → :8787
+pnpm --filter spotify-client run start        # CRA client → :3001
+```
 
 ---
 
