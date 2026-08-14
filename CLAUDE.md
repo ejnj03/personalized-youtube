@@ -4,29 +4,31 @@ This file is loaded into every Claude Code session for this repo. It's the **orc
 
 ## What this project is
 
-A **personalizable YouTube clone showcase**. Visitors land on a hand-built YouTube-shaped homepage, type any prompt to personalize it (*"green dark theme, hide shorts, more chill jazz, less bangers"*), and the page updates live. Preferences stick across reloads via cookie-anonymous identity. v0 uses a 300-video mock catalog with on-demand fill via Claude Haiku for arbitrary niche queries; v0.5 (Week 2) swaps in real YouTube data via a CDP-intercepted `youtubei` adapter in an Electron sidecar.
+A **chat-driven personalization engine** (`@showcase/sdk`) plus two hosts built on it: a YouTube clone (`apps/web`) and a Spotify clone (`spotify-react-web-client`). Visitors type any prompt and the page restructures live; preferences stick per visitor cookie and per **mode** (named save-slots).
 
-The full plan: `/Users/ejun22/.claude/plans/yes-absolutely-and-sleepy-dewdrop.md`.
+Both hosts run on **real accounts**, not fixtures: YouTube via `youtubei.js` reading Chrome cookies, Spotify via the Web API. The mock catalog and its Haiku generator were removed — there is no fabricated data to fall back to.
+
+Persistence is a **local SQLite file** (`@showcase/sdk/sqlite`); there is no database to provision and no seed step. `supabasePersistence` remains in the SDK as the hosted option.
 
 ## Stack
 
 - Next.js 15 (App Router) + React 19 + Tailwind 3.4
 - Zustand + zundo (in-tab undo)
-- Supabase (database + storage; cookie-anonymous, no auth in v0)
-- Anthropic SDK (`@anthropic-ai/sdk`) with `claude-opus-4-7` for chat, `claude-haiku-4-5-20251001` for catalog gen
-- pnpm workspaces; one app (`apps/web`) + `packages/shared`. The earlier `apps/desktop` Electron sidecar has been removed; real YouTube data now flows through `apps/web/lib/innertube/` reading Chrome cookies directly.
+- SQLite via `better-sqlite3` (cookie-anonymous, no auth). **Node 20 only** — native ABI, see `.nvmrc`.
+- Anthropic SDK (`@anthropic-ai/sdk`) with `claude-opus-4-7` for chat
+- pnpm workspaces: `packages/sdk` (the product) + `packages/shared`, and two hosts. The earlier `apps/desktop` Electron sidecar has been removed; real YouTube data flows through `apps/web/lib/innertube/` reading Chrome cookies directly.
 
 ## Repo layout (root = this directory)
 
 ```
 showcase/
-  apps/
-    web/                          # Next.js 15
-                                  # (apps/desktop was removed — real YouTube data now lives in apps/web/lib/innertube/)
-  packages/shared/                # Zod schemas, tool defs, PageConfig types
-  .claude/agents/                 # 8 specialist subagents
-  supabase/migrations/            # numbered, append-only SQL
-  scripts/seed.ts                 # mock catalog generation
+  packages/sdk/                   # THE PRODUCT: patch model, defineHost, chat handler,
+                                  # persistence adapters, presets. Has its own docs/.
+  packages/shared/                # Zod schemas, tool defs, PageConfig types (YouTube host)
+  apps/web/                       # YouTube clone (Next.js 15)
+  spotify-react-web-client/       # Spotify clone (CRA client + Hono server)
+  .claude/agents/                 # specialist subagents — STALE, predate the SDK split
+  supabase/migrations/            # SQL for the optional hosted adapter; not used locally
   docs/                           # ONBOARDING, architecture, GLOSSARY, decisions, youtube-adapter
   logs/                           # JSONL Anthropic call logs (gitignored)
 ```
@@ -48,8 +50,8 @@ showcase/
 | `schema-keeper` | `packages/shared/src/schemas/`, `tool-schemas.ts`, `page-config.ts` | Add/modify section type or prop, change tool surface |
 | `template-author` | `apps/web/components/templates/*` | Add/modify React section components |
 | `api-keeper` | `app/api/chat/route.ts`, `lib/prompts/`, `lib/anthropic.ts` | Modify chat tools, prompts, streaming, caching |
-| `db-keeper` | `supabase/migrations/`, `lib/supabase.ts`, `lib/queries/` | Schema changes, queries, RLS |
-| `feed-curator` | `lib/mock-data/`, `lib/adapters/mock.ts`, `scripts/seed.ts` | Refresh / expand catalog, on-demand content prompts |
+| `db-keeper` | ~~`lib/supabase.ts`~~, `lib/queries/` | **Stale** — Supabase is gone locally; persistence is `@showcase/sdk/sqlite` |
+| `feed-curator` | ~~`lib/mock-data/`, `scripts/seed.ts`~~ | **Retired** — the mock catalog and seed script were removed |
 | `youtube-adapter` | `apps/web/lib/innertube/`, `lib/adapters/youtube.ts` | Real YouTube data via Chrome cookies + youtubei.js |
 | `debugger` | `__tests__/replays/`, `logs/` (read-only on rest) | Investigate breakage, write replay tests |
 | `cache-doctor` | (read-only) | Audit cache hit ratio after prompt/schema changes |

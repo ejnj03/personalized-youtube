@@ -60,6 +60,7 @@ The package ships four import paths. Picking the right one matters in frameworks
 | `@showcase/sdk` | `PersonalizationRoot`, `ChatPanel`, hooks | **client** components |
 | `@showcase/sdk/core` | `defineHost`, `defineTokens`, `defineFonts`, patch model, prompts | **server + client** (pure, no `'use client'`) |
 | `@showcase/sdk/server` | `createNextHandler`, `createChatHandler` | **server** route handlers |
+| `@showcase/sdk/sqlite` | `sqlitePersistence` | **server** (Node fs; optional `better-sqlite3`) |
 | `@showcase/sdk/supabase` | `supabasePersistence`, `loadSupabaseBaseConfig` | **server** (service-role key) |
 
 > 🔑 **The one rule that trips people up:** when a module is evaluated on the server (e.g. a Next.js RSC or a schema imported by a route), import theme/host builders from **`@showcase/sdk/core`**, not the root barrel. The root barrel bundles the client components and carries a hoisted `'use client'`. More in **[Concepts → the client/server boundary](docs/concepts.md#the-client--server-boundary)**.

@@ -1,5 +1,14 @@
 # Deploy
 
+> **Out of date.** This describes the Supabase-backed deploy. The repo now
+> defaults to `sqlitePersistence`, which writes to the local filesystem and
+> therefore **cannot work on Vercel** (ephemeral FS: writes vanish between
+> invocations). Deploying needs a host switched back to `supabasePersistence`
+> plus a live Supabase project. The `pnpm migrate` step below no longer exists
+> as a script — apply `supabase/migrations/` with the Supabase CLI instead.
+> Sections on mock-catalog bundling and `api/generate-content` describe code
+> that has since been removed.
+
 ## Vercel (showcase)
 
 ### One-time setup

@@ -221,17 +221,18 @@ The same pattern shows up everywhere:
 
 ---
 
-## The two video sources
+## The video source
 
-The page can pull videos from one of two backends:
+There is exactly one: real YouTube.
 
-### Mock catalog (default)
+> **Removed.** A 168-video mock catalog, generated once via Claude Haiku and
+> stored in Supabase, used to be the default, with real YouTube as opt-in. Both
+> the catalog and its seed script are gone. Nothing fabricates videos now — when
+> the real path fails, `getAdapter()` returns an **empty** feed and warns. A
+> reader looking for `lib/adapters/mock.ts` or `scripts/seed.ts` will not find
+> them.
 
-168 hand-crafted videos generated once via Claude Haiku and stored in Supabase. Stable. Predictable. Anyone can run the app this way with no external dependencies.
-
-> 📁 [`apps/web/lib/adapters/mock.ts`](../apps/web/lib/adapters/mock.ts), [`scripts/seed.ts`](../scripts/seed.ts).
-
-### Real YouTube (opt-in)
+### Real YouTube
 
 The trick: most users on most machines run a Chrome browser. Chrome stores YouTube cookies on disk. **We read those cookies directly** (with macOS keychain permission) and use them to call YouTube's internal `youtubei` API as if we were that browser.
 

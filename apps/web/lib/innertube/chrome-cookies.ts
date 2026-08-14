@@ -14,7 +14,9 @@
 //   macOS will prompt "security wants to use the 'Chrome Safe Storage'
 //   keychain item." Click "Always Allow" — after that the keychain access
 //   is silent for the lifetime of the developer's machine. If the user
-//   clicks "Deny" we surface `cookies-unavailable` and fall back to mock.
+//   clicks "Deny" we surface `cookies-unavailable`. The mock catalog that
+//   used to absorb this is gone, so the practical result is an anonymous
+//   feed, or an empty one if that fails too — not fabricated videos.
 //
 // macOS Chrome v80+ encrypted-value format:
 //   - prefix bytes: ASCII "v10" or "v11" (3 bytes), then ciphertext.

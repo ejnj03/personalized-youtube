@@ -26,7 +26,7 @@ Welcome. This doc is for you if you've heard a few of these terms before but hav
        │                  │                     │
        ▼                  ▼                     ▼
 ┌─────────────┐  ┌──────────────────┐  ┌─────────────────┐
-│  README.md  │  │ docs/ARCHITECTURE│  │ docs/GLOSSARY   │
+│  README.md  │  │ docs/architecture│  │ docs/GLOSSARY   │
 │ (run / use) │  │ (how it works)   │  │ (term lookup)   │
 └─────────────┘  └──────────────────┘  └─────────────────┘
 ```
@@ -38,29 +38,37 @@ Welcome. This doc is for you if you've heard a few of these terms before but hav
 ## Part 1: Get it running (10 min)
 
 **Prereqs.** Install these once:
-- [Node 20+](https://nodejs.org)
+- **Node 20.x specifically** (not 22 — see the note below). `nvm use` picks it up from `.nvmrc`.
 - pnpm 9+: run `corepack enable && corepack prepare pnpm@9 --activate`
 - An [Anthropic API key](https://console.anthropic.com)
-- A free [Supabase](https://supabase.com) project
+- Chrome, signed in to YouTube (the feed is your real account)
+
+> **Why Node 20 and not "20+".** `better-sqlite3` is a native module compiled
+> against one Node ABI. Install under 22 and the binary will not load under 20,
+> and the failure message names an ABI number rather than the cause.
 
 **Run.**
 
 ```bash
 git clone <repo-url> showcase
 cd showcase
+nvm use
 pnpm install
+pnpm --filter @showcase/sdk build     # apps import the SDK's dist/, which is gitignored
 cp .env.example .env
 ```
 
-Open `.env` and paste in your `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. (Find Supabase keys in your Supabase project → Settings → API.)
+Open `.env` and paste in your `ANTHROPIC_API_KEY`. That is the only required variable.
 
 ```bash
-pnpm migrate                          # create tables
-pnpm seed                             # generate the 168-video mock catalog (~$0.50, ~2 min)
 pnpm --filter @showcase/web dev       # start the dev server
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You should see a YouTube-shaped page with mock videos.
+Open [http://localhost:3000](http://localhost:3000). You should see a YouTube-shaped page showing **your own** YouTube feed.
+
+**The first load is slow** (tens of seconds) because it fetches the live feed, and macOS will prompt for the *Chrome Safe Storage* keychain item. Click **Always Allow**; later runs read it silently.
+
+If Chrome is not signed in, or you deny the keychain prompt, the page shell still renders with an empty feed. There is no mock catalog to fall back to — it was removed. Personalization prompts that only touch theme and layout still work; anything that needs videos will not.
 
 **Try a prompt.** In the chat panel (bottom right):
 
@@ -121,11 +129,13 @@ You don't have to understand them deeply yet — just know they exist and where 
    ▼
    ┌─────────────────────────────────────────────────────┐
    │  4. PERSISTENCE                                      │
-   │     Every patch is also saved to Supabase, keyed by  │
-   │     the visitor's cookie. On reload we replay them.  │
+   │     Every patch is also saved to a local SQLite      │
+   │     file, keyed by the visitor's cookie. On reload   │
+   │     we replay them. No database to provision.        │
    │                                                      │
    │     📁 apps/web/lib/queries/page.ts                   │
-   │     📁 supabase/migrations/0001_init.sql              │
+   │     📁 apps/web/lib/modes.ts   (the adapter)          │
+   │     📁 .showcase/showcase.db   (created on 1st write) │
    └─────────────────────────────────────────────────────┘
 ```
 
@@ -144,10 +154,10 @@ Best way to get oriented is to ship a tiny change. Pick one:
 
 The "YouTube" wordmark in the top bar comes from `theme.sections[topBar].props.logoText`. Where to look:
 
-1. The mock seed sets the initial value. Open [`scripts/seed.ts`](../scripts/seed.ts) and search for `'YouTube'`. You'll see `logoText: 'YouTube'`. Don't change it here yet.
+1. The baseline config sets the initial value. Open [`apps/web/lib/base-config.ts`](../apps/web/lib/base-config.ts) and search for `'YouTube'`. You'll see `logoText: 'YouTube'`. Don't change it here yet.
 2. The component that renders it is [`apps/web/components/templates/TopBar.tsx`](../apps/web/components/templates/TopBar.tsx). Read it — you'll see `<span>{logoText}</span>`.
 3. **Make the change via chat instead of editing files.** In the running app, type *"change the logo to MyTube"*. Claude will emit `update_section({ sectionId: 'topBar', patch: { logoText: 'MyTube' } })`. Watch it apply.
-4. Refresh — `MyTube` should still be there. (Open Supabase → preferences table to see your patch saved.)
+4. Refresh — `MyTube` should still be there. (Your patch is a row in `.showcase/showcase.db`; open it with `sqlite3 .showcase/showcase.db 'select * from patches'` to see it.)
 
 That's the loop. **The point: you didn't write any code.** The chat panel + the existing schema + the LLM did it.
 
@@ -167,7 +177,7 @@ You just touched four layers: schema, render, CSS, and the LLM teaching layer. T
 
 ### Harder: add a whole new section type
 
-If you want to flex more, [ARCHITECTURE.md "Want to extend it?"](./ARCHITECTURE.md#want-to-extend-it) walks through adding a new section type end-to-end.
+If you want to flex more, [architecture.md](./architecture.md) walks through adding a new section type end-to-end.
 
 ---
 
@@ -187,7 +197,10 @@ A handful of things that will trip you up early:
 - Run `pnpm --filter @showcase/web typecheck` to get them all. Most of the time it's a schema change in `packages/shared/` that needs another component to update.
 
 **"The YouTube path won't work for me."**
-- That's fine — it requires Chrome on macOS. Stay in mock mode (the default). Mock mode supports 95% of the personalization story.
+- The cookie reader is macOS + Chrome only. There is no mock mode to fall back to, so you get an empty feed: theme and layout prompts still work, content prompts do not. The Spotify host is the alternative on other platforms.
+
+**"My personalization vanished."**
+- Patches are keyed by visitor cookie *and* mode. Clearing cookies or switching modes both change what you see. Deleting `.showcase/showcase.db` wipes everything for a genuinely clean slate.
 
 ---
 
@@ -203,7 +216,7 @@ If you're hunting for where something lives, here's the cheat-sheet:
 | "How does the LLM know what to do" | `apps/web/lib/prompts/` (system, schema-catalog, editing-rules) |
 | "Where does the chat get sent" | `apps/web/app/api/chat/route.ts` |
 | "Where do videos come from" | `apps/web/lib/adapters/` and `apps/web/lib/innertube/` |
-| "How are preferences saved" | `apps/web/lib/queries/page.ts` + `supabase/migrations/` |
+| "How are preferences saved" | `apps/web/lib/queries/page.ts` + `apps/web/lib/modes.ts` |
 | "What ports / env vars" | `.env.example` + `apps/web/package.json` (scripts) |
 
 ---
@@ -212,10 +225,10 @@ If you're hunting for where something lives, here's the cheat-sheet:
 
 You're done with onboarding. Here's how to keep learning:
 
-- **Building something new?** → [ARCHITECTURE.md](./ARCHITECTURE.md) — the deep dive.
+- **Building something new?** → [architecture.md](./architecture.md) — the deep dive.
 - **Don't know what a word means?** → [GLOSSARY.md](./GLOSSARY.md) — terms.
 - **Wondering "why is it like this?"** → [decisions.md](./decisions.md) — chronological log of design judgment calls.
-- **Trying to deploy?** → [`../DEPLOY.md`](../DEPLOY.md).
+- **Trying to deploy?** → [`./DEPLOY.md`](./DEPLOY.md).
 - **Want to know how the YouTube cookies path works?** → [`./youtube-adapter.md`](./youtube-adapter.md).
 
 You don't need to read any of those right now. Come back to them when a specific question lands.

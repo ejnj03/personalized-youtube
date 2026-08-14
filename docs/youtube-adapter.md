@@ -12,7 +12,7 @@ The youtube adapter runs entirely server-side from the Next.js app. There is no 
 4. For cookies whose `value` column is empty, decrypts `encrypted_value` using AES-128-CBC. The key is PBKDF2-SHA1(password, salt='saltysalt', iter=1003, keylen=16) with the password fetched from the macOS Keychain via `security find-generic-password -s "Chrome Safe Storage" -wa "Chrome"`. The IV is 16 bytes of `0x20`.
 5. Composes a `Cookie:` header from the decrypted set and constructs an `Innertube` instance (`youtubei.js`) keyed on it.
 6. Calls `innertube.getHomeFeed()`, walks the typed `feed.videos` / `feed.shelves` / `feed.page_contents.contents`, maps each node into our flat `Video` shape, and pulls 1–2 continuations to bring the catalog up to ~30 entries.
-7. Returns `{ kind: 'ok', videos, sections: [], continuation: null, capturedAt }`. Anything else surfaces as `{ kind: 'unavailable', reason }` and the selector in `apps/web/lib/adapters/index.ts` falls back to mock.
+7. Returns `{ kind: 'ok', videos, sections: [], continuation: null, capturedAt }`. Anything else surfaces as `{ kind: 'unavailable', reason }` and the selector in `apps/web/lib/adapters/index.ts` returns an **empty feed** with a `console.warn`. The mock catalog it used to fall back to was removed.
 
 Caching: the `Innertube` instance is held in-process for ~10 minutes (cookies don't change often). The keychain password is held in-process for the lifetime of the Node process.
 
@@ -39,7 +39,7 @@ The first time the Next.js process calls `security find-generic-password ...`, m
 >
 > Buttons: **Always Allow** | Allow | Deny
 
-Click **Always Allow**. After that the Node process can read the password silently every subsequent run on this machine. If the user clicks **Deny** (or closes the dialog), `readYoutubeCookies()` returns `cookies-unavailable` and the adapter falls back to mock — no crash.
+Click **Always Allow**. After that the Node process can read the password silently every subsequent run on this machine. If the user clicks **Deny** (or closes the dialog), `readYoutubeCookies()` returns `cookies-unavailable` and the client retries anonymously — no crash, but a signed-out feed.
 
 To revoke later, open `Keychain Access.app` -> `login` keychain -> search "Chrome Safe Storage" -> select the entry -> `Access Control` tab -> remove `security` from the allowed-apps list.
 
@@ -63,7 +63,7 @@ If anything in steps 1-4 fails, the page renders the mock 300-video catalog inst
 | `chrome cookie file not found (is Chrome installed?)` | Chrome not installed at the default path, or using a non-Default profile. | Set `CHROME_COOKIE_PATH=/full/path/to/Cookies` in `.env.local`. The adapter probes `Default`, `Profile 1`, `Profile 2` automatically before giving up. |
 | `home feed parsed empty (cookie expired?)` | Auth cookie rotated or the user signed out of Chrome. | Sign in to youtube.com again in Chrome. The next page-load picks up fresh cookies (the 10-minute Innertube cache is invalidated on process restart, or call `clearInnertubeCache()` from `lib/innertube/client.ts` for a hot path). |
 | `failed to snapshot cookie db: EBUSY` | Extremely rare on macOS — Chrome's WAL setup is normally readable while open. | Quit Chrome briefly, retry. The adapter reads a *copy*, never the live file, so this should not normally happen. |
-| Page shows mock catalog despite `SHOWCASE_FEED_SOURCE=youtube` | Server console will have a `[adapters] youtube fell back to mock: <reason>` warning. | Read the reason; it points at one of the rows above. |
+| Page shows an empty feed | Server console will have a `[adapters] youtube feed unavailable (<reason>); serving empty feed` warning. | Read the reason; it points at one of the rows above. |
 | Brave / Firefox / Safari not yet supported. | Different cookie store layout. | TODO. Brave is the closest port — same Chromium store at `~/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies`, same v10/v11 prefix, same PBKDF2 params, but the keychain service name is different. Firefox uses an unencrypted `cookies.sqlite` (much simpler — no keychain). |
 | Linux / Windows host. | Cookie-decrypt is platform-specific. | TODO. Linux: same algorithm but the password lives in GNOME keyring / KWallet (with a fallback "peanuts" for `v11`). Windows: DPAPI-protected, completely different code path. |
 
