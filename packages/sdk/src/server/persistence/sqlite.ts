@@ -73,8 +73,20 @@ function open(file: string): Database.Database {
 }
 
 export function sqlitePersistence(file: string = DEFAULT_FILE): PersistenceAdapter {
-  const conn = open(file);
+  // Opened lazily on first use, NOT at construction. Hosts call
+  // sqlitePersistence() at module scope, so an eager open makes merely
+  // importing the host touch the disk and load a native binary — and any
+  // failure (missing binary, wrong Node ABI, unwritable dir) becomes a fatal
+  // import-time throw before the server can log anything. The symptom is a
+  // process that exits silently. Deferring means failures surface at the call
+  // site, with a stack that points at the operation that needed the DB.
+  let statements: ReturnType<typeof prepareAll> | null = null;
+  const stmts = () => (statements ??= prepareAll(open(file)));
 
+  return makeAdapter(stmts);
+}
+
+function prepareAll(conn: Database.Database) {
   const nextSeq = conn.prepare(
     `SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM patches
       WHERE visitor_id = ? AND slug = ? AND mode_id = ?`
@@ -125,38 +137,48 @@ export function sqlitePersistence(file: string = DEFAULT_FILE): PersistenceAdapt
     }
   );
 
+  return {
+    selPatches, insPatch, delPatches,
+    selTurns, insTurn, delTurns,
+    selModes, insMode,
+    nextTurnSeq, writeMany,
+  };
+}
+
+function makeAdapter(stmts: () => ReturnType<typeof prepareAll>): PersistenceAdapter {
   let counter = 0;
   const nextId = () => `mode-${Date.now()}-${++counter}`;
 
   return {
     async read(visitorId, slug, modeId): Promise<Patch[]> {
-      const rows = selPatches.all(visitorId, slug, modeId) as { patch: string }[];
+      const rows = stmts().selPatches.all(visitorId, slug, modeId) as { patch: string }[];
       return rows.map((r) => JSON.parse(r.patch) as Patch);
     },
 
     async write(visitorId, slug, modeId, patches): Promise<void> {
       if (!patches.length) return;
-      writeMany(visitorId, slug, modeId, patches);
+      stmts().writeMany(visitorId, slug, modeId, patches);
     },
 
     async reset(visitorId, slug, modeId): Promise<void> {
-      delPatches.run(visitorId, slug, modeId);
-      delTurns.run(visitorId, slug, modeId);
+      stmts().delPatches.run(visitorId, slug, modeId);
+      stmts().delTurns.run(visitorId, slug, modeId);
     },
 
     async recordTurn(visitorId, slug, modeId, turn): Promise<void> {
-      const seq = (nextTurnSeq.get(visitorId, slug, modeId) as { n: number }).n;
-      insTurn.run(visitorId, slug, modeId, seq, JSON.stringify(turn));
+      const s = stmts();
+      const seq = (s.nextTurnSeq.get(visitorId, slug, modeId) as { n: number }).n;
+      s.insTurn.run(visitorId, slug, modeId, seq, JSON.stringify(turn));
     },
 
     async readTurns(visitorId, slug, modeId, limit = 30): Promise<ChatTurn[]> {
-      const rows = selTurns.all(visitorId, slug, modeId, limit) as { turn: string }[];
+      const rows = stmts().selTurns.all(visitorId, slug, modeId, limit) as { turn: string }[];
       // Selected DESC to apply LIMIT to the most recent; restore chronological order.
       return rows.reverse().map((r) => JSON.parse(r.turn) as ChatTurn);
     },
 
     async listModes(visitorId, slug): Promise<Mode[]> {
-      const rows = selModes.all(visitorId, slug) as {
+      const rows = stmts().selModes.all(visitorId, slug) as {
         id: string;
         title: string;
         created_at: string;
@@ -166,7 +188,7 @@ export function sqlitePersistence(file: string = DEFAULT_FILE): PersistenceAdapt
 
     async createMode(visitorId, slug, title): Promise<Mode> {
       const mode: Mode = { id: nextId(), title, createdAt: new Date().toISOString() };
-      insMode.run(mode.id, visitorId, slug, mode.title, mode.createdAt);
+      stmts().insMode.run(mode.id, visitorId, slug, mode.title, mode.createdAt);
       return mode;
     },
   };
