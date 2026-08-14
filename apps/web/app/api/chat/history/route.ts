@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { supabasePersistence } from '@showcase/sdk/supabase';
-import { supabaseAdmin } from '@/lib/supabase';
+import { persistence } from '@/lib/modes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-// Reuse one server-side persistence instance across requests — the Supabase
-// client is connection-pooled and this avoids reconstructing on every call.
-const persistence = supabasePersistence(supabaseAdmin());
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

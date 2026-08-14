@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { supabaseAdmin } from '@/lib/supabase';
 import { persistence, resolveActiveModeId } from '@/lib/modes';
 
 export async function POST(req: Request) {
@@ -13,30 +12,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, deleted: 0 });
   }
 
-  const db = supabaseAdmin();
-  const { data: site } = await db.from('sites').select('id').eq('slug', slug).single();
-  if (!site) return NextResponse.json({ ok: true, deleted: 0 });
-
   // Reset only the ACTIVE mode — other save-slots keep their state.
   const activeModeId = await resolveActiveModeId(visitorId, slug, modeId);
 
-  // Wipe this mode's patches (count for the response) + its chat transcript,
-  // then log the reset as a turn so it appears in history on reload (parity
-  // with the Spotify clone's /api/reset).
-  const { count } = await db
-    .from('preferences')
-    .delete({ count: 'exact' })
-    .eq('visitor_id', visitorId)
-    .eq('site_id', site.id)
-    .eq('mode_id', activeModeId);
+  // Count before wiping so the response can report it. `reset` clears this
+  // mode's patches AND its chat transcript in one call, replacing what used to
+  // be two hand-written deletes against `preferences` and `chat_turns`.
+  const deleted = (await persistence.read(visitorId, slug, activeModeId)).length;
+  await persistence.reset(visitorId, slug, activeModeId);
 
-  await db
-    .from('chat_turns')
-    .delete()
-    .eq('visitor_id', visitorId)
-    .eq('site_id', site.id)
-    .eq('mode_id', activeModeId);
-
+  // Log the reset as a turn so it appears in history on reload (parity with
+  // the Spotify clone's /api/reset).
   await persistence.recordTurn(visitorId, slug, activeModeId, {
     userMessage: '',
     assistantMessage: 'Preferences reset.',
@@ -44,5 +30,5 @@ export async function POST(req: Request) {
     createdAt: new Date().toISOString(),
   });
 
-  return NextResponse.json({ ok: true, deleted: count ?? 0 });
+  return NextResponse.json({ ok: true, deleted });
 }

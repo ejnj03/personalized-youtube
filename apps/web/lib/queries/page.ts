@@ -1,7 +1,7 @@
 import { applyPatches, PageConfigSchema, type PageConfig, type Patch, type Short, type Video } from '@showcase/shared';
-import { supabaseAdmin } from '../supabase';
+import { makeBaseConfig } from '../base-config';
 import { getAdapter } from '../adapters';
-import { resolveActiveModeId } from '../modes';
+import { persistence, resolveActiveModeId } from '../modes';
 
 interface GetRenderedConfigArgs {
   slug: string;
@@ -67,18 +67,11 @@ export interface YtChipMeta {
 export async function getRenderedPage(
   { slug, visitorId, modeId }: GetRenderedConfigArgs,
 ): Promise<{ config: PageConfig; ytContinuation: string | null; ytChips: YtChipMeta[] }> {
-  const db = supabaseAdmin();
-
-  const { data: site, error: siteErr } = await db
-    .from('sites')
-    .select('id, base_config')
-    .eq('slug', slug)
-    .single();
-  if (siteErr || !site) throw new Error(`Site not found: ${slug} — run \`pnpm seed\` first.`);
-
-  // Re-parse through the schema so newer fields with .default() get filled in
-  // for rows seeded before the schema grew.
-  let config = PageConfigSchema.parse(site.base_config) as PageConfig;
+  // The baseline is static data and now lives in code (lib/base-config.ts),
+  // not a database row — so rendering the default page needs no backend and
+  // no seed step. makeBaseConfig already parses through PageConfigSchema, so
+  // newer fields with .default() are materialized.
+  let config = makeBaseConfig();
 
   // Move RecommendedRow to render after VideoGrid so the main feed is the
   // primary entry point rather than the recommended carousel. Handles pages
@@ -119,24 +112,15 @@ export async function getRenderedPage(
 
   if (!visitorId) return { config, ytContinuation, ytChips };
 
-  await db.from('visitors').upsert(
-    { id: visitorId, last_seen: new Date().toISOString() },
-    { onConflict: 'id' },
-  );
-
-  // Scope preferences to the visitor's ACTIVE mode (save-slot). Without the
-  // mode_id filter this would fold patches from every mode together.
+  // Scope patches to the visitor's ACTIVE mode (save-slot). Without the
+  // mode filter this would fold patches from every mode together.
   const activeModeId = await resolveActiveModeId(visitorId, slug, modeId);
 
-  const { data: prefs } = await db
-    .from('preferences')
-    .select('patch')
-    .eq('visitor_id', visitorId)
-    .eq('site_id', site.id)
-    .eq('mode_id', activeModeId)
-    .order('created_at', { ascending: true });
+  // Read through the shared adapter rather than querying a table directly, so
+  // SSR and the chat handler always agree on where state lives. (There is no
+  // longer a `visitors` row to upsert — the store keys on visitorId itself.)
+  const patches: Patch[] = await persistence.read(visitorId, slug, activeModeId);
 
-  const patches = (prefs ?? []).map((p) => p.patch as Patch);
   return { config: applyPatches(config, patches), ytContinuation, ytChips };
 }
 
