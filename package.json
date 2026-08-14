@@ -5,7 +5,7 @@
   "description": "Personalizable YouTube clone — chat-driven personalization showcase",
   "packageManager": "pnpm@9.0.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=20 <21"
   },
   "scripts": {
     "dev": "turbo run dev",
@@ -14,8 +14,6 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:visual": "turbo run test:visual",
-    "migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
-    "seed": "node --env-file=.env --import tsx scripts/seed.ts",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "dependencies": {

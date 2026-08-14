@@ -1,7 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
-import type { ChatTurn, Mode, PersistenceAdapter, Patch } from '@showcase/sdk/core';
+import type { ChatTurn, Mode, PersistenceAdapter } from '../../core/contract';
+import type { Patch } from '../../core/patch';
 
 /**
  * Server-side persistence backed by a local SQLite file.
@@ -12,11 +13,17 @@ import type { ChatTurn, Mode, PersistenceAdapter, Patch } from '@showcase/sdk/co
  * neither, and cookies additionally cap at ~4 KB and can't be written mid-stream
  * once response headers are flushed.
  *
- * Lives in apps/web rather than the SDK because better-sqlite3 is a native
- * module — the SDK stays installable without a compile step.
+ * better-sqlite3 is an OPTIONAL peer dependency: it ships a native binary, so
+ * only hosts that import `@showcase/sdk/sqlite` need to install it. Consumers
+ * that never touch this entry point are unaffected and need no compile step.
  *
  * Single-machine and non-serverless by design (ephemeral FS on Vercel). For a
  * hosted deploy, use supabasePersistence instead.
+ *
+ * Note: the default path is relative to `process.cwd()`, so two hosts started
+ * from different directories get separate stores. That is usually what you
+ * want — they are different sites — but pass an explicit path to make it
+ * deliberate rather than incidental.
  */
 
 const DEFAULT_FILE = join(process.cwd(), '.showcase', 'showcase.db');

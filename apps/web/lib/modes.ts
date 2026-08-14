@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { sqlitePersistence } from '@/lib/persistence/sqlite';
+import { sqlitePersistence } from '@showcase/sdk/sqlite';
 
 // Shared, mode-aware persistence instance — the single swap point for the
 // whole app. Backed by a local SQLite file rather than Supabase: the demo runs

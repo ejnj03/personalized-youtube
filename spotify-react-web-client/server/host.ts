@@ -1,7 +1,6 @@
 import { defineHost } from '@showcase/sdk';
-import { supabasePersistence } from '@showcase/sdk/supabase';
+import { sqlitePersistence } from '@showcase/sdk/sqlite';
 import { initialConfig, promptHints, sections, ThemeSchema } from '../src/personalization/schemas';
-import { supabaseAdmin } from './supabase';
 
 /**
  * Server-side host.
@@ -9,7 +8,7 @@ import { supabaseAdmin } from './supabase';
  * Shape (schemas, initialConfig, prompts) comes from ../src/personalization/schemas
  * — single source of truth shared with the client. Only the bits that
  * differ live here:
- *   - `persistence`: Supabase (server-only — service-role key)
+ *   - `persistence`: local SQLite on the server's disk (see issues/009)
  *   - `apiKey`: from env (Anthropic key, never sent to the browser)
  */
 export const host = defineHost({
@@ -17,6 +16,8 @@ export const host = defineHost({
   sections,
   initialConfig,
   promptHints,
-  persistence: supabasePersistence(supabaseAdmin()),
+  // Explicit path: this server runs from spotify-react-web-client/, so an
+  // implicit process.cwd() default would silently differ from apps/web's store.
+  persistence: sqlitePersistence('.showcase/spotify.db'),
   apiKey: process.env.ANTHROPIC_API_KEY ?? '',
 });
