@@ -53,7 +53,7 @@ function uniqueChannels(config: PageConfig, limit = 12): Channel[] {
   const out: Channel[] = [];
   for (const section of config.sections) {
     if (section.type === 'VideoGrid' || section.type === 'RecommendedRow' || section.type === 'ContinueWatchingRow') {
-      for (const v of section.props.videos) {
+      for (const v of section.props.videos ?? []) {
         const key = v.channel.name;
         if (!seen.has(key)) {
           seen.add(key);

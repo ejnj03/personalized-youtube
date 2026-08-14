@@ -99,8 +99,10 @@ export const host = defineHost({
       // PIN a referenced video: when the message has a "[Referenced videos]"
       // block (the visitor @-mentioned cards), use those id/title/channel.
       '"pin this to the Korean grammar row" (with a referenced video) → update_section on the RecommendedRow whose headline matches: props.pinned = [...existing pinned, { id: "<videoId from the referenced video>", title: "<its title>", channel: "<its channel>" }]. "unpin"/"remove it" → drop that entry from props.pinned.',
-      // NAMED rows = one RecommendedRow each, with a descriptive `headline`.
-      '"first row korean grammar lessons, rows beneath korean variety shows" → add_section RecommendedRow { headline: "Korean grammar lessons", sources: [{ queries: ["korean grammar lesson","learn korean grammar"], creators: ["GO! Billy Korean","Talk To Me In Korean"] }] } at the top, then add_section RecommendedRow { headline: "Korean variety shows", sources: [{ queries: ["korean variety show","런닝맨"], creators: ["tvN"] }] } below it — one RecommendedRow per named row.',
+      // NAMED rows: a FIXED named row = one RecommendedRow (a titled grid).
+      // "the rest of the feed should be X" = set the MAIN VideoGrid.sources —
+      // it fills with X and INFINITE-SCROLLS those keywords as the visitor scrolls.
+      '"first row korean grammar lessons, the rest korean variety shows" → add_section RecommendedRow { headline: "Korean grammar lessons", sources: [{ queries: ["korean grammar lesson","learn korean grammar"], creators: ["GO! Billy Korean","Talk To Me In Korean"] }] } at the top (a fixed titled grid), AND update_section the MAIN VideoGrid: props.sources = [{ queries: ["korean variety show","런닝맨"], creators: ["tvN"] }] — the feed then shows variety and keeps loading more of it on scroll.',
       // PERSISTENT per-mode caption preference → one SubtitleTrack section.
       '"I want videos in this mode always translated from english to korean" → add_section SubtitleTrack { primary: "en", secondary: "ko", visible: true } (or update_section if one already exists — at most one per mode)',
     ],

@@ -175,6 +175,12 @@ function deepMerge<T extends Record<string, unknown>>(
  * their own PageConfig in and get their own type back, while the SDK works
  * internally with the loose structural shape.
  */
+// Monotonic counter for minting unique section ids. A timestamp alone collides
+// when multiple add_section patches apply in the same millisecond (e.g. the
+// agent adds two rows in one turn, or React batches both dispatches against the
+// same pre-commit config) — the counter guarantees uniqueness regardless.
+let addSectionSeq = 0;
+
 export function applyPatch<T extends PageConfig>(
   config: T,
   patch: Patch,
@@ -224,9 +230,17 @@ export function applyPatch<T extends PageConfig>(
       return { ...config, sections: [...ordered, ...trailing] };
     }
     case 'add_section': {
+      // Mint a unique id: type + timestamp + a monotonic counter, then ensure
+      // it doesn't collide with an existing section (belt-and-suspenders).
+      const base = patch.sectionType.toLowerCase();
+      const existing = new Set(config.sections.map((s) => s.id));
+      let id = `${base}_${Date.now()}_${(addSectionSeq = (addSectionSeq + 1) % 0xffffff).toString(36)}`;
+      while (existing.has(id)) {
+        id = `${base}_${Date.now()}_${(addSectionSeq = (addSectionSeq + 1) % 0xffffff).toString(36)}`;
+      }
       // Build a draft, optionally let the host validate / fill defaults.
       const draft: Section = {
-        id: `${patch.sectionType.toLowerCase()}_${Date.now()}`,
+        id,
         type: patch.sectionType,
         props: patch.props ?? {},
       };

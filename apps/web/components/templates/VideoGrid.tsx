@@ -9,16 +9,34 @@ import { VideoCard } from './VideoCard';
 import { applyFeedFilter } from './_filter';
 import { usePageStore } from '@/lib/store';
 
+const videoKey = (v: Video) => v.id;
+const videoTitle = (v: Video) => v.title;
+
+function asCursorResult(d: { videos?: Video[]; continuation?: string | null } | null): {
+  items: Video[];
+  cursor: string | null;
+} {
+  return {
+    items: Array.isArray(d?.videos) ? (d!.videos as Video[]) : [],
+    cursor: typeof d?.continuation === 'string' && d.continuation.length > 0 ? d.continuation : null,
+  };
+}
+
 // provideContent for the SDK rule engine: one curated term (a query OR a
-// channel/youtuber) → YouTube search results. The hook fans out over every
-// term of every active rule and merges; this just runs one search.
-const ytSearchTerm = (term: string): Promise<Video[]> =>
+// channel/youtuber) → YouTube search results + a continuation cursor so the
+// curated grid can infinite-scroll the SAME keywords.
+const ytSearchTerm = (term: string): Promise<{ items: Video[]; cursor: string | null }> =>
   fetch(`/api/yt/search?q=${encodeURIComponent(term)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((d: { ok?: boolean; videos?: Video[] } | null) =>
-      Array.isArray(d?.videos) ? (d!.videos as Video[]) : [],
-    )
-    .catch(() => [] as Video[]);
+    .then(asCursorResult)
+    .catch(() => ({ items: [] as Video[], cursor: null }));
+
+// provideMore: paginate a term's cursor for the next page of keyword results.
+const ytMore = (cursor: string): Promise<{ items: Video[]; cursor: string | null }> =>
+  fetch(`/api/yt/more?token=${encodeURIComponent(cursor)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then(asCursorResult)
+    .catch(() => ({ items: [] as Video[], cursor: null }));
 
 // Density only governs vertical padding around the collection now; the
 // horizontal column count + card gap live on the layout preset.
@@ -70,12 +88,15 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
     items: curatedVideos,
     loading: isLoadingCurated,
     active: shouldUseCurated,
+    loadMore: loadMoreCurated,
+    hasMore: curatedHasMore,
   } = useSourceRules<Video>({
     rules: sources,
     fallbackSchedule: sectionSchedule,
     provideContent: ytSearchTerm,
-    itemKey: (v) => v.id,
-    itemTitle: (v) => v.title,
+    provideMore: ytMore,
+    itemKey: videoKey,
+    itemTitle: videoTitle,
   });
   // ---- end curated feed ----
 
@@ -83,7 +104,9 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
   // continuation token, fetch the next page and append to this section.
   useEffect(() => {
     const node = sentinelRef.current;
-    if (!node || !ytContinuation) return;
+    // Curated grids paginate their own keywords (separate effect below), not
+    // the home-feed continuation.
+    if (!node || !ytContinuation || shouldUseCurated) return;
     const obs = new IntersectionObserver(
       (entries) => {
         const e = entries[0];
@@ -117,13 +140,34 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
     );
     obs.observe(node);
     return () => obs.disconnect();
-  }, [ytContinuation, loadingMore, sectionId, sectionVideos, dispatch, setYtContinuation]);
+  }, [ytContinuation, loadingMore, sectionId, sectionVideos, dispatch, setYtContinuation, shouldUseCurated]);
+
+  // Curated infinite scroll: when this grid is curated, the sentinel paginates
+  // the curated KEYWORDS (the hook's loadMore appends the next search page) so
+  // the feed keeps loading more of the same topic instead of the home feed.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !shouldUseCurated || !curatedHasMore) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting || isLoadingCurated) return;
+        void loadMoreCurated();
+      },
+      { rootMargin: '400px 0px' },
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [shouldUseCurated, curatedHasMore, isLoadingCurated, loadMoreCurated]);
 
   if (section.type !== 'VideoGrid') return null;
   const { columns, density, videos, layout } = section.props;
   // When the curated-feed path is active and we have results, those replace
   // the static `videos` prop. Existing nav + feed filters still apply on top.
   const effectiveVideos = shouldUseCurated && curatedVideos ? curatedVideos : videos;
+  // Infinite-scroll sentinel: a curated grid paginates its keywords
+  // (curatedHasMore); the normal feed paginates the home continuation.
+  const showSentinel = shouldUseCurated ? curatedHasMore : !!ytContinuation;
+  const sentinelLoading = shouldUseCurated ? isLoadingCurated : loadingMore;
   const padY = DENSITY_PADY[density];
   const navFiltered = applyNavFilter(effectiveVideos, activeNav, selectedChannel);
   const filtered = applyFeedFilter(navFiltered, config);
@@ -256,9 +300,9 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
             </MediaCollection>
           </section>
         ))}
-        {ytContinuation && (
+        {showSentinel && (
           <div ref={sentinelRef} className="py-6 text-center text-xs text-[color:var(--muted-fg)]">
-            {loadingMore ? 'Loading more…' : ' '}
+            {sentinelLoading ? 'Loading more…' : ' '}
           </div>
         )}
       </div>
@@ -277,9 +321,9 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
             ))}
           </MediaCollection>
         </div>
-        {ytContinuation && (
+        {showSentinel && (
           <div ref={sentinelRef} className="py-6 text-center text-xs text-[color:var(--muted-fg)]">
-            {loadingMore ? 'Loading more…' : ' '}
+            {sentinelLoading ? 'Loading more…' : ' '}
           </div>
         )}
       </>
@@ -295,9 +339,9 @@ export function VideoGrid({ section, config }: { section: Section; config: PageC
           ))}
         </MediaCollection>
       </div>
-      {ytContinuation && (
+      {showSentinel && (
         <div ref={sentinelRef} className="px-6 py-6 text-center text-xs text-[color:var(--muted-fg)]">
-          {loadingMore ? 'Loading more videos…' : ' '}
+          {sentinelLoading ? 'Loading more videos…' : ' '}
         </div>
       )}
     </>

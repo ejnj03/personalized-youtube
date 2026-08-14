@@ -3,7 +3,7 @@
 import type { FontCatalog } from '../core/fonts';
 import { buildFontStack, buildGoogleFontsUrl } from '../core/fonts';
 
-import { applyPatch, type PageConfig, type Patch } from '../core/patch';
+import { applyPatch, type PageConfig, type Patch, type Section } from '../core/patch';
 import type { HostConfig, Mode } from '../core/contract';
 import { tokenKeyToCssVar } from '../core/tokens';
 
@@ -60,6 +60,13 @@ export interface PersonalizationRootProps {
    * silently skips both behaviors when this prop is absent.
    */
   fontCatalog?: FontCatalog;
+  /**
+   * Host hook to validate/normalize a freshly added section (materialize Zod
+   * defaults) on `add_section`. Without it, an agent-added section keeps only
+   * the props the agent emitted — missing-field crashes downstream. Hosts pass
+   * e.g. `(draft) => SectionSchema.parse(draft)`.
+   */
+  parseSection?: (draft: Section) => Section;
 }
 
 export function PersonalizationRoot({
@@ -68,6 +75,7 @@ export function PersonalizationRoot({
   initialModes = [],
   initialActiveMode = null,
   fontCatalog,
+  parseSection,
   children,
 }: PersonalizationRootProps) {
   const [config, setConfig] = useState<PageConfig>(
@@ -124,8 +132,10 @@ export function PersonalizationRoot({
 
 
   const dispatch = useCallback((patch: Patch) => {
-    setConfig((current) => applyPatch(current, patch));
-  }, []);
+    setConfig((current) =>
+      applyPatch(current, patch, parseSection ? { parseSection } : undefined),
+    );
+  }, [parseSection]);
 
   const replace = useCallback((next: PageConfig) => {
     setConfig(next);

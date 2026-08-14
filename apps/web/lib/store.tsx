@@ -7,8 +7,21 @@ import type { Patch } from '@showcase/sdk';
 // were written against the strict shape, so we use it for the public surface.
 import type { PageConfig } from '@showcase/shared';
 
-import { PersonalizationRoot, usePersonalization } from '@showcase/sdk';
+import { PersonalizationRoot, usePersonalization, type Section } from '@showcase/sdk';
+import { SectionSchema } from '@showcase/shared';
 import { host } from './personalization';
+
+// Materialize Zod defaults on a freshly added section so agent-added sections
+// (e.g. a RecommendedRow with only `headline`+`sources`) get `videos: []`,
+// `pinned: []`, etc. — otherwise consumers crash on undefined props. Falls back
+// to the raw draft if the type is unknown / parse fails.
+function parseYtSection(draft: Section): Section {
+  try {
+    return SectionSchema.parse(draft) as unknown as Section;
+  } catch {
+    return draft;
+  }
+}
 
 
 export interface YtChipEntry {
@@ -174,7 +187,7 @@ export function PageStoreProvider({
   children: ReactNode;
 }) {
   return (
-    <PersonalizationRoot host={host} initialConfig={initialConfig}>
+    <PersonalizationRoot host={host} initialConfig={initialConfig} parseSection={parseYtSection}>
       <YtStateProvider
         pageSlug={pageSlug}
         initialYtContinuation={initialYtContinuation}

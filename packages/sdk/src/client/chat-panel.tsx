@@ -439,12 +439,16 @@ export function ChatPanel(props: ChatPanelProps) {
     const displayContent = mentions.length
       ? `${text} ${mentions.map((m) => '@' + m.label).join(' ')}`.trim()
       : text;
+    // Host-agnostic: serialize every field of each mention's ref so the agent
+    // gets the full reference (videoId/title/channel, or trackId/name/artist/…).
     const agentMessage = mentions.length
-      ? `${text}\n\n[Referenced videos — the visitor pointed at these (e.g. to pin into a row)]\n${mentions
-          .map(
-            (m) =>
-              `- "${(m.ref?.title as string) ?? m.label}" — channel: ${(m.ref?.channel as string) ?? ''} (videoId: ${(m.ref?.id as string) ?? ''})`,
-          )
+      ? `${text}\n\n[Referenced items — the visitor @-mentioned these (e.g. to pin into a row)]\n${mentions
+          .map((m) => {
+            const fields = Object.entries(m.ref ?? {})
+              .map(([k, v]) => `${k}=${String(v)}`)
+              .join(', ');
+            return `- @${m.label}${fields ? ` (${fields})` : ''}`;
+          })
           .join('\n')}`
       : text;
 

@@ -81,10 +81,20 @@ export const RecommendedRow = baseSection('RecommendedRow', {
       'Override theme.cardPreset for THIS row only. Pick a card archetype ' +
         '(e.g. "audio_card", "compact_card").',
     ),
+  // Layout: defaults to the page layout (a GRID, same dimensions as the main
+  // feed). Set to a row preset for a horizontal carousel instead.
+  layoutPreset: z
+    .string()
+    .optional()
+    .describe(
+      'Override the row\'s layout. Omit → renders as a full GRID matching the main feed (recommended for named content rows). Set "row_scroll" / "row_dense" for a horizontal left/right-scrolling carousel.',
+    ),
   headline: z
     .string()
     .default('Recommended for you')
     .describe('The row title shown above it (the visitor can also click it to rename). NAME it for its content, e.g. "Korean grammar lessons".'),
+  // Cap on how many videos the row shows (pinned + curated combined).
+  maxItems: z.number().int().positive().default(16).describe('Max videos shown in this row (pinned + curated combined). Default 16.'),
   videos: z.array(Video).default([]),
   // Pinned videos — always shown FIRST and persist regardless of sources /
   // schedule, until removed. The agent adds a full video object here when the

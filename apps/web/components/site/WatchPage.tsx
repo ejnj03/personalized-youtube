@@ -103,7 +103,7 @@ export function WatchPage() {
   const suggestions: Video[] = useMemo(() => {
     if (!watchingId) return [];
     const grid = config.sections.find((s) => s.type === 'VideoGrid');
-    const all = grid && grid.type === 'VideoGrid' ? grid.props.videos : [];
+    const all = (grid && grid.type === 'VideoGrid' ? grid.props.videos : []) ?? [];
     return all.filter((v) => v.id !== watchingId).slice(0, 20);
   }, [config.sections, watchingId]);
 
@@ -111,7 +111,7 @@ export function WatchPage() {
     if (!watchingId) return undefined;
     for (const s of config.sections) {
       if (s.type === 'VideoGrid' || s.type === 'RecommendedRow' || s.type === 'ContinueWatchingRow') {
-        const found = s.props.videos.find((v) => v.id === watchingId);
+        const found = (s.props.videos ?? []).find((v) => v.id === watchingId);
         if (found) return found;
       }
     }

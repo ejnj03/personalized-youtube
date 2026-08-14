@@ -17,6 +17,8 @@ export async function GET(req: Request) {
     ok: true,
     videos: result.videos,
     shorts: result.shorts,
+    // Pagination token so curated grids can infinite-scroll the same query.
+    continuation: result.continuation,
     query: q,
   });
 }

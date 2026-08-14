@@ -2,21 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import type { PageConfig, Section, Video } from '@showcase/shared';
-import { cardPresetCatalog } from '@showcase/shared';
-import { resolveCardPreset } from '@showcase/sdk/core';
+import { cardPresetCatalog, layoutPresetCatalog } from '@showcase/shared';
+import { resolveCardPreset, resolveLayoutPreset } from '@showcase/sdk/core';
 import { MediaCollection, useSourceRules } from '@showcase/sdk';
 import { VideoCard } from './VideoCard';
 import { applyFeedFilter } from './_filter';
 import { usePageStore } from '@/lib/store';
-
-// Rows have a fixed visual identity (scroll-snap horizontal row, ~5 visible).
-const ROW_LAYOUT = {
-  kind: 'row' as const,
-  columns: 5,
-  gap: 16,
-  scrollSnap: true,
-  description: '',
-};
 
 // provideContent for the SDK rule engine: one curated term → YT search results.
 const ytSearchTerm = (term: string): Promise<Video[]> =>
@@ -85,7 +76,12 @@ export function RecommendedRow({ section, config }: { section: Section; config: 
   });
 
   if (!isRow) return null;
-  const { headline, videos, pinned } = section.props;
+  // Defensive defaults: a section the agent just added via add_section may not
+  // have every field materialized if the patch path didn't re-parse the schema.
+  const headline = section.props.headline ?? 'Recommended for you';
+  const videos = section.props.videos ?? [];
+  const pinned = section.props.pinned ?? [];
+  const maxItems = section.props.maxItems ?? 16;
 
   // Base list: curated (when a rule is active) else the static videos. Filters
   // apply to the base only. Pinned videos render FIRST and bypass filters.
@@ -109,24 +105,33 @@ export function RecommendedRow({ section, config }: { section: Section; config: 
   const ordered = [
     ...pinnedVideos,
     ...filteredBase.filter((v) => !pinnedIds.has(v.id)),
-  ].slice(0, 16);
+  ].slice(0, maxItems);
 
   if (ordered.length === 0) return null;
 
   // Resolve the section's card preset → orientation for MediaCollection.
   const themeAny = config.theme as any;
   const sectionCardKey: string | undefined = (section.props as any).cardPreset;
+  const sectionLayoutKey: string | undefined = (section.props as any).layoutPreset;
   const cardPresetResolved = resolveCardPreset(
     cardPresetCatalog,
     themeAny.cardPreset ?? 'video_card',
     themeAny.cardOverrides ?? {},
     sectionCardKey,
   );
+  // Render with the page layout preset (a GRID by default) so a named row has
+  // the same dimensions as the main feed instead of a horizontal carousel.
+  // props.layoutPreset can override to "row_scroll" for a carousel.
+  const layoutPresetResolved = resolveLayoutPreset(
+    layoutPresetCatalog,
+    themeAny.layoutPreset ?? 'grid_default',
+    sectionLayoutKey,
+  );
 
   return (
     <section className="px-6 py-3">
       <EditableHeadline sectionId={section.id} headline={headline} />
-      <MediaCollection preset={ROW_LAYOUT} cardOrientation={cardPresetResolved.orientation}>
+      <MediaCollection preset={layoutPresetResolved} cardOrientation={cardPresetResolved.orientation}>
         {ordered.map((v) => (
           <VideoCard key={v.id} video={v} config={config} cardPresetOverride={sectionCardKey} />
         ))}
