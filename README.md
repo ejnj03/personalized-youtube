@@ -29,6 +29,13 @@ The clones aren't mockups: the YouTube host reads your signed-in feed/library/pl
 - **Modes** — parallel, named personalization sessions; each keeps its own config + chat history.
 - **Real data, cached** — your home feed, subscriptions, library, playlists, comments — with a keyed TTL cache so repeat views are instant.
 
+A demonstration of one of many ways of personalizing your feed:
+
+https://github.com/user-attachments/assets/1cc1bf78-d086-4dd4-827f-1e7c7ae835cd
+
+
+
+
 ## How it works
 
 ```
@@ -82,6 +89,8 @@ The YouTube host needs Chrome signed into YouTube (first run prompts macOS Keych
 pnpm --filter spotify-client run dev:server   # Hono API   → :8787
 pnpm --filter spotify-client run start        # CRA client → :3001
 ```
+
+
 
 ---
 
