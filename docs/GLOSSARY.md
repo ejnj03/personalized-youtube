@@ -28,7 +28,7 @@ Plain-language definitions for terms used throughout this codebase. If you read 
 
 **Sort** — what order the videos appear in. `recommended` (default), `recent`, `popular`, `duration`, `density`, `mood`.
 
-**Patch** — a small JSON change to the `PageConfig`. Seven kinds: `update_theme`, `update_section`, `set_filter`, `set_sort`, `add_section`, `remove_section`, `reorder_sections`. The chat panel produces patches; the store applies them.
+**Patch** — a small JSON change to the `PageConfig`. Five patch kinds: `update_theme`, `update_section`, `add_section`, `remove_section`, `reorder_sections`. (`request_more_content` and `ask_user` are also tools, but they are side effects and produce no patch.) `set_filter` and `set_sort` were removed; filter and sort are ordinary `PageConfig` fields edited through `update_section`. The chat panel produces patches; the store applies them.
 
 ---
 
@@ -70,7 +70,9 @@ Plain-language definitions for terms used throughout this codebase. If you read 
 
 ## The data layer
 
-**Adapter** — a swappable backend that supplies videos. We have two: `mockAdapter` (the 168-video catalog) and the youtube adapter (real YouTube via cookies). The selector in [`apps/web/lib/adapters/index.ts`](../apps/web/lib/adapters/index.ts) picks one based on `SHOWCASE_FEED_SOURCE`.
+**Adapter** — the backend that supplies videos. There is one: the youtube adapter (real YouTube via Chrome cookies). The selector in [`apps/web/lib/adapters/index.ts`](../apps/web/lib/adapters/index.ts) forwards its `'ok'` results and returns an **empty feed** otherwise. A `mockAdapter` with a 168-video catalog used to be the default; it was removed, and there is no `SHOWCASE_FEED_SOURCE` env var.
+
+**PersistenceAdapter** — the separate, unrelated adapter interface for *storage* (7 methods: read, write, reset, recordTurn, readTurns, listModes, createMode). Five implementations ship with the SDK. Both hosts use `sqlitePersistence`.
 
 **`youtubei` / `youtubei.js`** — YouTube's *internal* API + a Node library that wraps it. We use it because YouTube's official Data API doesn't return personalized recommendations.
 
@@ -94,7 +96,7 @@ Plain-language definitions for terms used throughout this codebase. If you read 
 
 **Zod** — a schema validation library. Lets us write `z.object({ accent: z.string() })` once and use it both for types in TypeScript *and* for runtime validation. Why this matters: an LLM might emit slightly-wrong data; Zod catches it before it touches the page.
 
-**Supabase** — a Postgres database with a friendly API. Stores: the base `PageConfig`, each visitor's preference patches, the chat-turn log.
+**Supabase** — a hosted Postgres database. `supabasePersistence` still ships in the SDK for anyone who wants shared, cross-device storage, but **nothing in this repo uses it**. Visitor state goes to a local SQLite file, and the base `PageConfig` lives in code ([`apps/web/lib/base-config.ts`](../apps/web/lib/base-config.ts)), not a table.
 
 **pnpm** — like `npm`, but faster and with built-in support for monorepos (multiple packages in one repo).
 

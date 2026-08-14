@@ -37,24 +37,30 @@ showcase/
 
 **The main Claude Code session is an orchestrator, not an implementer.** When you (the user, or a future Claude session) ask for a change:
 
-1. Identify the affected domain (schemas, templates, API, DB, mock data, real data, debugging).
+1. Identify the affected domain (schemas, templates, chat/API, persistence, real data, debugging).
 2. Delegate to the matching specialist subagent in `.claude/agents/`.
 3. Each subagent runs in its own context window and returns a 3-line summary.
 4. The main session never accumulates implementation details — only the high-level state.
 
 ### Agent ownership table
 
+Seven agents. Two were deleted rather than updated — see the note below.
+
 | Agent | Owns | Trigger |
 |---|---|---|
-| `research-runner` | (retired) | one-off Day-1 research pass; no longer maintained |
-| `schema-keeper` | `packages/shared/src/schemas/`, `tool-schemas.ts`, `page-config.ts` | Add/modify section type or prop, change tool surface |
+| `schema-keeper` | `packages/shared/src/{schemas,page-config,tool-schemas}` | Add/modify section type or prop, change tool surface |
 | `template-author` | `apps/web/components/templates/*` | Add/modify React section components |
-| `api-keeper` | `app/api/chat/route.ts`, `lib/prompts/`, `lib/anthropic.ts` | Modify chat tools, prompts, streaming, caching |
-| `db-keeper` | ~~`lib/supabase.ts`~~, `lib/queries/` | **Stale** — Supabase is gone locally; persistence is `@showcase/sdk/sqlite` |
-| `feed-curator` | ~~`lib/mock-data/`, `scripts/seed.ts`~~ | **Retired** — the mock catalog and seed script were removed |
-| `youtube-adapter` | `apps/web/lib/innertube/`, `lib/adapters/youtube.ts` | Real YouTube data via Chrome cookies + youtubei.js |
-| `debugger` | `__tests__/replays/`, `logs/` (read-only on rest) | Investigate breakage, write replay tests |
+| `api-keeper` | `app/api/chat/`, `lib/prompts/`, `lib/anthropic.ts`, and the SDK's `chat-handler.ts` + `tool-defs.ts` | Modify chat tools, prompts, streaming, caching |
+| `persistence-keeper` | `PersistenceAdapter` + its 5 implementations, `lib/modes.ts`, `lib/queries/` | Where visitor state lives; modes; new storage backends |
+| `youtube-adapter` | `apps/web/lib/innertube/`, `lib/adapters/`, `app/api/yt/` | Real YouTube data via Chrome cookies + youtubei.js |
+| `debugger` | `logs/`, `.showcase/*.db` (read-only on everything else) | Investigate breakage, produce a root cause with evidence |
 | `cache-doctor` | (read-only) | Audit cache hit ratio after prompt/schema changes |
+
+**Deleted:** `feed-curator` owned the mock catalog, `scripts/seed.ts`, and
+`lib/adapters/mock.ts` — all removed, so it owned nothing. `research-runner` was
+a one-shot Day-1 pass whose only output (`docs/research.md`) no longer exists.
+`db-keeper` became `persistence-keeper`: it held Supabase MCP tools pointed at a
+deleted project and owned a `lib/supabase.ts` that is gone.
 
 ### Skills layered on top
 

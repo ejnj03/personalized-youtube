@@ -1,12 +1,25 @@
 # Decisions Log
 
-Append-only. Every domain agent (schema-keeper, api-keeper, db-keeper, etc.) appends a one-line entry here when it makes a non-trivial decision. Format:
+Append-only. Every domain agent (schema-keeper, api-keeper, persistence-keeper,
+etc.) appends a one-line entry here when it makes a non-trivial decision. Format:
 
 ```
 - YYYY-MM-DD — agent — short title.
   Decision: <what>.
   Why: <why>.
 ```
+
+> **How to read this file.** It is a historical record, so entries are **not**
+> corrected when the world moves on — that would destroy the point of keeping
+> it. Several early entries reason about things that no longer exist: a mock
+> video catalog, a Supabase backend, `set_filter` / `set_sort` tools, an
+> Electron sidecar, and a `feed-curator` agent. Those entries are still true
+> about *what was decided at the time*.
+>
+> Superseded entries are marked inline with **`[SUPERSEDED YYYY-MM-DD]`** and a
+> pointer. If an entry has no marker, it has not been audited rather than
+> confirmed current. For what is true **now**, read
+> [architecture.md](./architecture.md) and [CLAUDE.md](../CLAUDE.md).
 
 ## 2026-04-29 — youtube-adapter — swap Electron+CDP for youtubei.js + Chrome cookies
 
@@ -77,6 +90,10 @@ Append-only. Every domain agent (schema-keeper, api-keeper, db-keeper, etc.) app
 
 ## 2026-04-29 — main session — Track B complete, tag-matching quality TODO
 
+- **[SUPERSEDED 2026-08-14]** `set_filter` no longer exists as a tool, the mock
+  catalog and its Haiku tag generation are gone, and `feed-curator` was deleted.
+  Tag matching against real YouTube data is a different problem; if it recurs,
+  file a fresh issue rather than reviving this TODO.
 - TODO (api-keeper / feed-curator): set_filter requireTags is exact-string. Claude often emits compound tags like "underwater photography" that don't match a filter on `'photography'`. Result: 0 visible videos when filter and Haiku-generated tags don't align. Mitigations: (a) substring/fuzzy match in VideoGrid.applyFilter, (b) prompt Claude to use consistent tag splits ("underwater" + "photography" instead of "underwater photography"), (c) feed-curator post-processes Haiku output to split compound tags. Choose one before showcase.
 
 ## 2026-04-29 — main session — known issues from v0 smoke test
@@ -85,13 +102,25 @@ Append-only. Every domain agent (schema-keeper, api-keeper, db-keeper, etc.) app
 
 ## 2026-04-29 — main session — bootstrap
 
+- **[SUPERSEDED 2026-08-14]** The mock-data stage and the CDP/Electron path were
+  both later removed. Real YouTube via in-process Chrome cookies is the only
+  source; see the 2026-04-29 youtube-adapter entry above and
+  [architecture.md](./architecture.md).
 - Decision: pivot from "auto-decode any URL" to "hand-built YouTube clone with personalization." Mock data v0; youtube-adapter (CDP-intercepted youtubei) v0.5.
   Why: showcase impact > technical novelty. YouTube is universally recognized; hand-built shell eliminates Day-1 decoder risk.
 - Decision: cookie-anonymous visitor identity. UUID in HttpOnly cookie. No login.
   Why: zero-friction showcase. Sticky preferences without authentication overhead.
 - Decision: project root `cs_197/showcase/` (named `showcase` not `personalize` to keep room for non-YouTube clones later).
   Why: per user preference.
+- **[SUPERSEDED 2026-08-14]** Still 7 tools, but a different 7: `set_filter` and
+  `set_sort` were dropped (filter and sort became `PageConfig` fields edited via
+  `update_section`) and `reorder_sections` was added. Current list:
+  [`packages/sdk/src/core/tool-defs.ts`](../packages/sdk/src/core/tool-defs.ts).
+  Note the original entry also listed eight items under the heading "7 chat tools".
 - Decision: 7 chat tools — `update_section`, `update_theme`, `set_filter`, `set_sort`, `add_section`, `remove_section`, `request_more_content`, `ask_user`.
   Why: covers aesthetic + behavioral personalization. `request_more_content` solves arbitrary-niche-query coverage when mock catalog is thin.
+- **[SUPERSEDED 2026-08-14]** Now 7: `feed-curator` and `research-runner` were
+  deleted (both owned only deleted files), and `db-keeper` became
+  `persistence-keeper`. See the ownership table in [CLAUDE.md](../CLAUDE.md).
 - Decision: 8 specialist subagents in `.claude/agents/` (research-runner, schema-keeper, template-author, api-keeper, db-keeper, feed-curator, youtube-adapter, debugger) + cache-doctor. Main session is orchestrator only.
   Why: prevent context bloat across multi-week build. Each agent owns disjoint slice; main session sees only summaries.

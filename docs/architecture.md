@@ -111,11 +111,14 @@ Instead of replacing the whole config every time, we apply tiny patches. There a
 |---|---|---|
 | `update_theme` | `{ accent: '#22C55E' }` | merges into `theme` |
 | `update_section` | `{ sectionId: 'videoGrid', patch: { density: 'compact' } }` | merges into one section's props |
-| `set_filter` | `{ requireTags: ['jazz'] }` | merges into the filter state |
-| `set_sort` | `{ by: 'density' }` | merges into the sort state |
 | `add_section` | `{ sectionType: 'MoodBoard', position: { after: 'categoryChips' } }` | inserts a new section |
 | `remove_section` | `{ sectionId: 'shortsRow' }` | drops a section |
 | `reorder_sections` | `{ order: ['topBar', 'recommendedRow', 'videoGrid'] }` | reshuffles |
+| `request_more_content` | `{ category: 'jazz', count: 8 }` | side effect: asks the host to fetch |
+| `ask_user` | `{ question: '…' }` | side effect: asks a clarifying question |
+
+> `set_filter` and `set_sort` used to be separate patch kinds. They are gone —
+> filter and sort are `PageConfig` fields edited through `update_section`.
 
 Each patch is validated against a schema (using a library called [Zod](https://zod.dev)) before we apply it. So the LLM can't accidentally write nonsense like `mode: 'spaghetti'` — it gets rejected.
 
@@ -124,11 +127,14 @@ Each patch is validated against a schema (using a library called [Zod](https://z
 
 ### 4. **Persistence** — your changes stick
 
-Each patch is also saved to a Supabase database, keyed by your `visitor_id` cookie. When you reload the page, we replay every patch you've ever made on top of the base config. That's why the page remembers you.
+Each patch is also saved to a local SQLite file, keyed by your `visitor_id` cookie **and** the active mode. When you reload the page, we replay every patch you've made in that mode on top of the base config. That's why the page remembers you.
+
+The baseline config is not stored — it lives in code, so rendering the default page needs no backend at all.
 
 > 📁 [`apps/web/lib/queries/page.ts`](../apps/web/lib/queries/page.ts) — `getRenderedPage()` does the read + replay.
-> [`apps/web/app/api/patch/route.ts`](../apps/web/app/api/patch/route.ts) — the write side (chat + chips both call this).
-> [`supabase/migrations/0001_init.sql`](../supabase/migrations/0001_init.sql) — the schema (sites, visitors, preferences, chat_turns).
+> [`apps/web/lib/base-config.ts`](../apps/web/lib/base-config.ts) — the baseline, in code.
+> [`apps/web/lib/modes.ts`](../apps/web/lib/modes.ts) — the single persistence swap point.
+> [`packages/sdk/src/server/persistence/sqlite.ts`](../packages/sdk/src/server/persistence/sqlite.ts) — the adapter.
 
 ---
 
@@ -154,8 +160,9 @@ When you submit chat input, the browser fires a request to `/api/chat` with the 
 
 The first three pieces almost never change between requests, so we mark them as **cacheable**. Anthropic's prompt-caching means we only pay full cost on the first request; later ones reuse the cached prefix at ~10% cost. Net effect: each chat round is cheap and fast.
 
-> 📁 [`apps/web/lib/prompts/system.ts`](../apps/web/lib/prompts/system.ts), [`schema-catalog.ts`](../apps/web/lib/prompts/schema-catalog.ts), [`editing-rules.ts`](../apps/web/lib/prompts/editing-rules.ts)
-> [`apps/web/app/api/chat/route.ts`](../apps/web/app/api/chat/route.ts) — assembles + sends.
+> 📁 [`apps/web/lib/prompts/`](../apps/web/lib/prompts/) — host-specific fragments.
+> [`packages/sdk/src/core/prompts/`](../packages/sdk/src/core/prompts/) — the shared assembly and editing rules.
+> [`packages/sdk/src/server/chat-handler.ts`](../packages/sdk/src/server/chat-handler.ts) — assembles + sends. The host route is a thin mount over it.
 
 ### Step 3 — Claude responds with tool calls
 
@@ -170,23 +177,24 @@ For *"make it feel like a quiet bookshop"* it might emit a chain:
 ```json
 { "name": "update_theme", "input": { "mode": "light", "fontFamily": "serif",
   "background": { "kind": "paper", "from": "#f3eee0" },
-  "videoCardDefaults": { "thumbnailSaturate": 0.25, "hideMeta": true } } }
+  "cardPreset": "editorial" } }
 { "name": "update_section", "input": { "sectionId": "videoGrid",
   "patch": { "layout": "shelves", "columns": 2 } } }
 { "name": "update_section", "input": { "sectionId": "categoryChips",
   "patch": { "visible": false } } }
 ```
 
-The tool definitions live next to the schemas so they always agree.
+There are **seven** tools: `update_section`, `update_theme`, `add_section`,
+`remove_section`, `reorder_sections`, `request_more_content`, `ask_user`.
 
-> 📁 [`packages/shared/src/tool-schemas.ts`](../packages/shared/src/tool-schemas.ts) — what tools are.
-> [`apps/web/lib/prompts/editing-rules.ts`](../apps/web/lib/prompts/editing-rules.ts) — many examples of the LLM picking which tools to use.
+> 📁 [`packages/sdk/src/core/tool-defs.ts`](../packages/sdk/src/core/tool-defs.ts) — the tool definitions, host-agnostic.
+> [`packages/sdk/src/core/prompts/editing-rules.ts`](../packages/sdk/src/core/prompts/editing-rules.ts) — examples of the LLM picking which tools to use.
 
 ### Step 4 — Stream the patches back
 
 We don't wait for Claude to finish thinking. Each tool call streams back to the browser as it lands, via Server-Sent Events. The chat UI shows a live "Thinking…" indicator and pills like "tweaked the look" as each one arrives.
 
-> 📁 [`apps/web/app/api/chat/route.ts`](../apps/web/app/api/chat/route.ts) — the SSE side.
+> 📁 [`packages/sdk/src/server/chat-handler.ts`](../packages/sdk/src/server/chat-handler.ts) — the SSE side.
 
 ### Step 5 — Apply each patch
 
@@ -196,7 +204,7 @@ When the browser receives a patch event, it dispatches it into the store. The st
 
 ### Step 6 — Persist + remember
 
-In parallel with the visual update, the patch is saved to Supabase. When you reload, [`getRenderedPage`](../apps/web/lib/queries/page.ts) replays your patches onto the base config in order.
+In parallel with the visual update, the patch is written through the persistence adapter. When you reload, [`getRenderedPage`](../apps/web/lib/queries/page.ts) replays your patches onto the base config in order.
 
 ---
 
@@ -214,7 +222,7 @@ We didn't write code for each of these vibes. The few-shot examples teach Claude
 
 The same pattern shows up everywhere:
 
-- Typing a behavioral preference → composes `set_filter` + `set_sort` + maybe an `add_section`
+- Typing a behavioral preference → composes `update_section` on the filter/sort fields, plus maybe an `add_section`
 - Typing an aesthetic vibe → composes `update_theme` (multiple fields at once)
 - Typing a feed reorganization → composes `remove_section` + `add_section` + `update_section`
 - Typing "match the page to the playing video" → Claude looks at the thumbnail (we send it as a multimodal image) and picks the whole vibe from the colors / mood
@@ -236,70 +244,80 @@ There is exactly one: real YouTube.
 
 The trick: most users on most machines run a Chrome browser. Chrome stores YouTube cookies on disk. **We read those cookies directly** (with macOS keychain permission) and use them to call YouTube's internal `youtubei` API as if we were that browser.
 
-The result: when you set `SHOWCASE_FEED_SOURCE=youtube`, the homepage shows your *actual* feed — your subscriptions, your real chip rail (which is personalized to your watch history), your search results.
+The result: the homepage shows your *actual* feed — your subscriptions, your real chip rail (which is personalized to your watch history), your search results. There is no env var to set; it is the only source. (`SHOWCASE_FEED_SOURCE` appeared in older docs and is read by nothing.)
 
 The same chat-driven personalization wraps both sources, because the chat layer only edits the `PageConfig`, not the videos themselves.
 
 > 📁 [`apps/web/lib/innertube/`](../apps/web/lib/innertube/) — the youtubei.js wrapper + Chrome cookie reader.
-> [`apps/web/lib/adapters/`](../apps/web/lib/adapters/) — selects between mock and youtube based on env.
+> [`apps/web/lib/adapters/`](../apps/web/lib/adapters/) — forwards the youtube adapter's `'ok'` results and returns an empty feed otherwise.
 
 ---
 
 ## What lives where (a tour)
 
 ```
-apps/web/
-├── app/
-│   ├── page.tsx                Server component. Loads the visitor's cookie,
-│   │                           reads their config, renders the shell.
-│   ├── api/
-│   │   ├── chat/route.ts        The chat endpoint — assembles the prompt,
-│   │   │                        calls Claude with tools, streams patches.
-│   │   ├── chat/history/        GET historical chat turns for a visitor.
-│   │   ├── page/route.ts        GET the current rendered config (used by
-│   │   │                        Reset).
-│   │   ├── patch/route.ts       POST a patch (chat + chip clicks).
-│   │   ├── reset/route.ts       DELETE all preferences for a visitor.
-│   │   ├── generate-content/    Claude Haiku generator for on-demand
-│   │   │                        catalog backfill ("we don't have enough
-│   │   │                        chill jazz, generate some").
-│   │   └── yt/                  YouTube proxy: /search, /browse (with
-│   │                            chip-token routing), /more (continuation
-│   │                            for infinite scroll), /comments.
-│   ├── components/
-│   │   ├── chat/                The chat panel + message UI.
-│   │   ├── site/                Page shell — TopBar, Sidebar, main.
-│   │   └── templates/           One file per section type. Each one knows
-│   │                            how to render itself given its props.
-│   └── lib/
-│       ├── store.tsx            React Context store of the live PageConfig.
-│       ├── adapters/            mock + youtube + selector.
-│       ├── innertube/           YouTube cookie reader + youtubei.js client +
-│       │                        the JSON walker that pulls videos out of
-│       │                        deeply-nested response shapes.
-│       ├── prompts/             What Claude reads — system role, schema
-│       │                        catalog, editing rules, few-shots.
-│       ├── queries/             Server-side: read the visitor's config from
-│       │                        Supabase, replay their patches, return.
-│       ├── anthropic.ts         Anthropic SDK wrapper + cost estimation +
-│       │                        JSONL request log.
-│       └── supabase.ts          Supabase admin client.
-│
-packages/shared/
+packages/sdk/                      THE PRODUCT. Host-agnostic engine.
 ├── src/
-│   ├── page-config.ts            The PageConfig schema + applyPatch reducer.
-│   ├── tool-schemas.ts           Anthropic tool definitions (must match
-│   │                             page-config patches).
-│   └── schemas/
-│       ├── theme.ts               Theme + VideoCardDefaults + Background.
-│       ├── sections.ts            Every section type and its props.
-│       └── video.ts               Video + Short + Chapter (per-video meta).
-│
-supabase/migrations/0001_init.sql  sites, visitors, preferences, chat_turns.
-docs/                              This file + architecture decisions log.
-scripts/                           seed, migrate, clean-thumbs, smoke test.
-apps/desktop/                      [SUPERSEDED] Earlier Electron+CDP path.
+│   ├── core/                      Server-safe, no 'use client'.
+│   │   ├── contract.ts            defineHost + the PersistenceAdapter interface.
+│   │   ├── patch.ts               The patch model and applyPatches.
+│   │   ├── tool-defs.ts           The 7 Anthropic tool definitions.
+│   │   ├── prompts/               Shared prompt assembly + editing rules.
+│   │   ├── cards/ layouts/        Preset catalogs a host can offer.
+│   │   ├── tokens.ts fonts/       Theme token + font presets.
+│   │   └── captions/              Subtitle fetch + Haiku translation.
+│   ├── server/                    Node-only.
+│   │   ├── chat-handler.ts        The streaming chat loop. The real engine.
+│   │   └── persistence/sqlite.ts  Local-file adapter (both hosts use this).
+│   └── client/                    Browser.
+│       ├── persistence/           in-memory, localStorage, cookie, supabase.
+│       └── (chat panel, MediaCard, MediaCollection, hooks)
+
+apps/web/                          YouTube host (Next.js 15).
+├── app/
+│   ├── page.tsx                   Server component. Reads the visitor cookie,
+│   │                              renders the shell.
+│   └── api/
+│       ├── chat/route.ts          Thin mount over the SDK's createNextHandler.
+│       ├── chat/history/          GET historical chat turns.
+│       ├── page/route.ts          GET the current rendered config.
+│       ├── patch/route.ts         POST a patch (chat + chip clicks).
+│       ├── reset/route.ts         DELETE preferences for a visitor+mode.
+│       ├── modes/route.ts         List / create save-slots.
+│       └── yt/                    YouTube proxy: /info, /more, /comments.
+├── components/
+│   ├── chat/                      Chat panel wiring.
+│   ├── site/                      Page shell.
+│   └── templates/                 One file per section type + registry.tsx.
+└── lib/
+    ├── store.tsx                  React Context store of the live PageConfig.
+    ├── base-config.ts             The baseline PageConfig, in code.
+    ├── modes.ts                   Persistence + active-mode resolution.
+    ├── adapters/                  youtube + selector.
+    ├── innertube/                 Chrome cookie reader, youtubei.js client,
+    │                              and the JSON walker.
+    ├── prompts/                   Host-specific prompt fragments.
+    ├── queries/page.ts            SSR read: base config + replay patches.
+    └── anthropic.ts               Host client + cost estimation + JSONL log.
+
+spotify-react-web-client/          Spotify host (CRA client + Hono server).
+├── src/personalization/host.ts    Its defineHost call.
+└── server/                        Hono API on :8787, authoritative for state.
+
+packages/shared/                   YouTube-host schemas.
+├── src/page-config.ts             PageConfig schema + applyPatch reducer.
+├── src/tool-schemas.ts            Host-side tool derivation.
+└── src/schemas/{theme,sections,video}.ts
+
+supabase/migrations/               Schema for the OPTIONAL hosted adapter.
+docs/                              This file, onboarding, decisions, glossary.
+issues/                            Local issue tracker (gitignored).
 ```
+
+> Two directories in older versions of this tree are gone: `apps/desktop/` (the
+> Electron + CDP capture path, superseded by reading Chrome cookies in-process)
+> and `apps/web/lib/mock-data/` with `scripts/seed.ts`.
+
 
 ---
 
@@ -317,7 +335,7 @@ You're on a watch page with a Miles Davis album cover playing. You type that pro
 5. Each tool call streams back. The browser:
    - Updates the theme variables → CSS recolors instantly
    - Adds the AmbientBackground section → `PageRoot` notices it and starts rendering soft radial-blob clouds in the page-level overlay layer, with hue derived from the watching video's id
-   - Saves all three patches to Supabase
+   - Saves all three patches through the persistence adapter
 6. Visually: the page exhales into a smoky blue ambient theme around the player. Reload the page tomorrow — same Miles Davis vibe.
 
 That whole loop is ~3 seconds end-to-end (mostly Claude's response time).
@@ -340,7 +358,7 @@ Three things keep this fast despite the heavy machinery:
 A few patterns that took multiple revisions to land on:
 
 - **Stable section ids matter.** The chat patches reference sections by id, not by index. So `move recommendations to the top` produces a `reorder_sections` with stable ids the LLM read off the current snapshot.
-- **The mapper is defensive.** YouTube changes its response shape every few months (new node types like `lockupViewModel`, `chipCloudChipRenderer.continuationCommand` instead of `browseEndpoint.params`). The walker in `lib/innertube/client.ts` is designed to never throw — it shrinks gracefully when keys go missing, and the adapter falls back to mock if the result is empty.
+- **The mapper is defensive.** YouTube changes its response shape every few months (new node types like `lockupViewModel`, `chipCloudChipRenderer.continuationCommand` instead of `browseEndpoint.params`). The walker in `lib/innertube/client.ts` is designed to never throw — it shrinks gracefully when keys go missing. The cost of that tolerance is that a shape change yields an empty result indistinguishable from an empty feed, which is why `shape-drift` is surfaced explicitly rather than swallowed.
 - **The chat tool calls are the source of truth.** The chat doesn't reply with markdown explanations. It emits patches. The "Got it — switching to dark mode" line you see in the panel is generated *client-side* from a friendly mapping over the tool names — purely cosmetic.
 - **Patches compose.** A single visitor message can yield 4 tool calls. They apply in order. If two patches edit the same field, the later one wins (last-writer-wins).
 
