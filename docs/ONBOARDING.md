@@ -228,7 +228,7 @@ You're done with onboarding. Here's how to keep learning:
 - **Building something new?** → [architecture.md](./architecture.md) — the deep dive.
 - **Don't know what a word means?** → [GLOSSARY.md](./GLOSSARY.md) — terms.
 - **Wondering "why is it like this?"** → [decisions.md](./decisions.md) — chronological log of design judgment calls.
-- **Trying to deploy?** → [`./DEPLOY.md`](./DEPLOY.md).
+- **Trying to deploy?** → you can't, by design. Both hosts are local-only: persistence is a SQLite file on the server's disk, and the YouTube feed comes from the Chrome cookie store on the machine running it. Deploying would mean choosing a hosted persistence adapter and a different auth story for YouTube.
 - **Want to know how the YouTube cookies path works?** → [`./youtube-adapter.md`](./youtube-adapter.md).
 
 You don't need to read any of those right now. Come back to them when a specific question lands.

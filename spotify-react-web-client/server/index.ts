@@ -16,9 +16,9 @@ process.on('unhandledRejection', (reason) => {
 
 const app = new Hono();
 
-// Allow the CRA dev server (port 3000) to call this backend (port 8787).
-// In production (Vercel), the frontend and the API live under one origin so
-// CORS becomes a no-op.
+// Allow the CRA dev server (port 3001) to call this backend (port 8787).
+// Both run locally on different ports, so CORS is always in play — there is
+// no deployed single-origin setup that makes it a no-op.
 app.use('/api/*', cors({
   // Spotify CRA dev server runs on 3001 (3000 is taken by the YT clone).
   // Browser treats localhost vs 127.0.0.1 as distinct origins → allow both.

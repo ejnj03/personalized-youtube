@@ -47,7 +47,7 @@ pnpm add better-sqlite3
 Three things to know:
 
 - **The default path is relative to `process.cwd()`**, so two hosts started from different directories get separate stores. That is usually right (they are different sites), but pass an explicit path to make it deliberate rather than incidental.
-- **It will not work on serverless.** Vercel and friends have an ephemeral filesystem, so writes vanish between invocations. Use `supabasePersistence` there.
+- **It will not work on serverless.** Those platforms give each invocation an ephemeral filesystem, so writes vanish between them. Use `supabasePersistence` there.
 - **The connection opens lazily**, on first use rather than at construction, so importing a module that calls `sqlitePersistence()` does not touch the disk.
 
 In Next.js, mark the native module external or webpack will try to bundle the `.node` binary:
