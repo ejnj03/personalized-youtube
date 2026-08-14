@@ -29,7 +29,12 @@
     "./styles.css": {
       "default": "./dist/styles.css"
     },
-    "./dist/styles.css": "./dist/styles.css"
+    "./dist/styles.css": "./dist/styles.css",
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.mjs",
+      "require": "./dist/sqlite.js"
+    }
   },
   "files": [
     "dist"
@@ -49,16 +54,21 @@
   },
   "peerDependencies": {
     "@supabase/supabase-js": "^2.0.0",
+    "better-sqlite3": ">=9",
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },
   "peerDependenciesMeta": {
     "@supabase/supabase-js": {
       "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^18 || ^19",
     "@types/react-dom": "^18 || ^19",
     "autoprefixer": "^10.4.0",

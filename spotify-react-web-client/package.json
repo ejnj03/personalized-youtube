@@ -35,15 +35,15 @@
     "redux-persist-expire": "^1.1.1",
     "tinycolor2": "^1.6.0",
     "use-debounce": "^10.1.1",
-    "youtubei.js": "17.0.1"
+    "youtubei.js": "17.0.1",
+    "better-sqlite3": "12.9.0"
   },
   "resolutions": {
     "underscore": "1.13.8"
   },
   "scripts": {
     "start": "PORT=3001 react-scripts start",
-    "server": "tsx watch --env-file=../.env server/index.ts",
-    "seed": "tsx --env-file=../.env scripts/seed.ts",
+    "dev:server": "tsx watch --env-file=../.env server/index.ts",
     "build": "react-scripts build && cp build/index.html build/404.html",
     "test": "react-scripts test",
     "eject": "react-scripts eject",

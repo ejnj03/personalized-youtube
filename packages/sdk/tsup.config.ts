@@ -11,6 +11,9 @@ export default defineConfig({
     // route handlers instead of the root barrel.
     server: 'src/server/index.ts',
     supabase: 'src/client/persistence/supabase.ts',
+    // Node-only adapter with an optional native peer dep (better-sqlite3).
+    // Separate entry so importing the root barrel never pulls it in.
+    sqlite: 'src/server/persistence/sqlite.ts',
   },
   format: ['cjs', 'esm'],          // emit both — exports field picks based on consumer
   dts: {

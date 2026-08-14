@@ -1,10 +1,13 @@
 import { cookies } from 'next/headers';
-import { supabasePersistence } from '@showcase/sdk/supabase';
-import { supabaseAdmin } from '@/lib/supabase';
+import { sqlitePersistence } from '@showcase/sdk/sqlite';
 
-// Shared, mode-aware persistence instance. The Supabase client is pooled, so
-// one instance is reused across requests (same pattern as chat/history route).
-export const persistence = supabasePersistence(supabaseAdmin());
+// Shared, mode-aware persistence instance — the single swap point for the
+// whole app. Backed by a local SQLite file rather than Supabase: the demo runs
+// against a local dev server, so the store can live on the server's own disk.
+// That keeps SSR personalized (getRenderedPage reads it during the server
+// render) and keeps createNextHandler's server-side read/write working, neither
+// of which a browser-only adapter could do. See issues/001.
+export const persistence = sqlitePersistence();
 
 // Cookie holding the visitor's active mode (save-slot) for SSR. Mirrors the
 // `visitor_id` cookie: the page loader and the write routes read it to scope

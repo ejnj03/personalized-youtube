@@ -16,10 +16,10 @@ pnpm migrate                # apply the Postgres schema once
 Run what you're working on:
 
 ```bash
-pnpm --filter @showcase/web dev          # YouTube clone  → http://localhost:3000
-pnpm --filter spotify-client server      # Spotify API    → http://localhost:8787
-pnpm --filter spotify-client start       # Spotify client → http://localhost:3001
-pnpm --filter @showcase/sdk dev          # rebuild the SDK on change (watch mode)
+pnpm --filter @showcase/web dev              # YouTube clone  → http://localhost:3000
+pnpm --filter spotify-client run dev:server  # Spotify API    → http://localhost:8787
+pnpm --filter spotify-client run start       # Spotify client → http://localhost:3001
+pnpm --filter @showcase/sdk dev              # rebuild the SDK on change (watch mode)
 ```
 
 Full setup details live in the [README](README.md).

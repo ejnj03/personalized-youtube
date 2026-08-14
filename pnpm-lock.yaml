@@ -131,6 +131,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
+      better-sqlite3:
+        specifier: '>=9'
+        version: 12.9.0
       react:
         specifier: 19.2.7
         version: 19.2.7
@@ -147,6 +150,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.45.0
         version: 2.105.1
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/react':
         specifier: ^18 || ^19
         version: 19.2.14
@@ -211,6 +217,9 @@ importers:
       axios:
         specifier: ^1.17.0
         version: 1.17.0
+      better-sqlite3:
+        specifier: 12.9.0
+        version: 12.9.0
       bgutils-js:
         specifier: 3.2.0
         version: 3.2.0
@@ -10874,7 +10883,7 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 20.19.39
+      '@types/node': 25.9.2
 
   '@types/body-parser@1.19.6':
     dependencies:

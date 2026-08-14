@@ -27,3 +27,9 @@ commerce/
 /logs/
 .firecrawl/
 
+
+# Local issue log
+issues/
+
+# Local SQLite store (lib/persistence/sqlite.ts)
+.showcase/
