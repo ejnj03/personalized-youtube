@@ -64,7 +64,8 @@ export async function createInnertube(): Promise<InnertubeSession | null> {
   }
 
   // Try authenticated mode first (local Chrome cookies). If unavailable
-  // (no Chrome / no cookies / on Vercel / cookies expired), fall back to
+  // (no Chrome / no cookies / not running on the user's machine / cookies
+  // expired), fall back to
   // anonymous mode — works for search, video info, comments, browse, and
   // sidebar suggestions. Only personalized endpoints (home feed, subs)
   // require authentication.

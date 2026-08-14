@@ -17,8 +17,9 @@ import type { Patch } from '../../core/patch';
  * only hosts that import `@showcase/sdk/sqlite` need to install it. Consumers
  * that never touch this entry point are unaffected and need no compile step.
  *
- * Single-machine and non-serverless by design (ephemeral FS on Vercel). For a
- * hosted deploy, use supabasePersistence instead.
+ * Single-machine and non-serverless by design: serverless platforms give each
+ * invocation an ephemeral filesystem, so writes would not survive. For a hosted
+ * deploy, use supabasePersistence instead.
  *
  * Note: the default path is relative to `process.cwd()`, so two hosts started
  * from different directories get separate stores. That is usually what you
