@@ -2,12 +2,13 @@
   "name": "showcase",
   "private": true,
   "version": "0.0.1",
-  "description": "Personalizable YouTube clone — chat-driven personalization showcase",
+  "description": "Personalizable YouTube clone \u2014 chat-driven personalization showcase",
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=20 <21"
   },
   "scripts": {
+    "prepare": "pnpm --filter @showcase/sdk build",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
